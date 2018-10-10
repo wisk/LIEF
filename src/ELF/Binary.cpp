@@ -47,14 +47,50 @@ namespace LIEF {
 namespace ELF {
 Binary::Binary(void)  = default;
 
-Binary::Binary(const std::string& name, ELF_CLASS type) : type_{type} {
-  this->name_ = name;
-  if (type_ == ELF_CLASS::ELFCLASS32) {
-  }
-  else if (type_ == ELF_CLASS::ELFCLASS32) {
-  }
-}
+//Binary::Binary(const std::string& name, ELF_CLASS type) : type_{type} {
+//  this->name_ = name;
+//  if (type_ == ELF_CLASS::ELFCLASS32) {
+//  }
+//  else if (type_ == ELF_CLASS::ELFCLASS32) {
+//  }
+//}
 
+
+std::unique_ptr<Binary> Binary::create() {
+  std::unique_ptr<Binary> new_binary{new Binary{}};
+  new_binary->type_ = ELF_CLASS::ELFCLASS64;
+
+
+  // Set header
+  new_binary->header_.file_type(E_TYPE::ET_EXEC);
+  new_binary->header_.machine_type(ARCH::EM_X86_64);
+  new_binary->header_.object_file_version(VERSION::EV_CURRENT);
+  new_binary->header_.entrypoint(1234);
+
+  new_binary->header_.program_headers_offset(1234);
+  new_binary->header_.section_headers_offset(1234);
+
+  new_binary->header_.processor_flag(0);
+
+  new_binary->header_.header_size(sizeof(ELF64::Elf_Ehdr));
+  new_binary->header_.program_header_size(sizeof(ELF64::Elf_Phdr));
+  new_binary->header_.section_header_size(sizeof(ELF64::Elf_Shdr));
+
+  std::string ident = "\x7F";
+  new_binary->header_.identity(ident + "ELF");
+  new_binary->header_.identity_class(ELF_CLASS::ELFCLASS64);
+  new_binary->header_.identity_data(ELF_DATA::ELFDATA2LSB);
+  new_binary->header_.identity_version(VERSION::EV_CURRENT);
+  new_binary->header_.identity_os_abi(OS_ABI::ELFOSABI_SYSTEMV);
+
+
+  new_binary->datahandler_ = new DataHandler::Handler{std::vector<uint8_t>{}};
+
+
+
+
+  return std::move(new_binary);
+}
 
 Header& Binary::header(void) {
   return const_cast<Header&>(static_cast<const Binary*>(this)->header());

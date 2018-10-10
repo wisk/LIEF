@@ -62,8 +62,10 @@ class LIEF_API Binary : public LIEF::Binary {
   using string_list_t = std::vector<std::string>;
   using overlay_t     = std::vector<uint8_t>;
 
+  static std::unique_ptr<Binary> create();
+
   public:
-  Binary(const std::string& name, ELF_CLASS type);
+  //Binary(const std::string& name, ELF_CLASS type);
 
   Binary& operator=(const Binary& ) = delete;
   Binary(const Binary& copy) = delete;
