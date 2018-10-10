@@ -74,7 +74,9 @@ Header::Header(void) :
   section_header_size_(0),
   numberof_sections_(0),
   section_string_table_idx_(0)
-{}
+{
+  std::memset(&this->identity_, 0x00, sizeof(this->identity_));
+}
 
 
 Header::Header(const Elf32_Ehdr *header):

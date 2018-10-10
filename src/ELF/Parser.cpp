@@ -317,7 +317,7 @@ void Parser::parse_symbol_sysv_hash(uint64_t offset) {
 
   sysvhash.chains_ = std::move(chains);
 
-  this->binary_->sysv_hash_ = std::move(sysvhash);
+  this->binary_->sysv_hash(std::move(sysvhash));
 
 }
 

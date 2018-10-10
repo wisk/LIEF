@@ -41,10 +41,17 @@ class LIEF_API Builder {
 
     Builder& empties_gnuhash(bool flag = true);
 
+    void update_sections(void);
+    void update_segments(void);
+    void update_dynamic_entries(void);
+
     const std::vector<uint8_t>& get_build(void);
     void write(const std::string& filename) const;
 
   protected:
+    template<typename ELF_T>
+    void update_dynamic_entries(void);
+
     template<typename ELF_T>
     void build(void);
 
@@ -64,10 +71,13 @@ class LIEF_API Builder {
     void build_dynamic(void);
 
     template<typename ELF_T>
-    void build_dynamic_section(void);
+    void build_dynamic_section(std::vector<uint8_t>& dynamic_strings_raw);
 
     template<typename ELF_T>
-    void build_dynamic_symbols(void);
+    void build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw);
+
+    template<typename ELF_T>
+    void build_dynamic_strings(std::vector<uint8_t>& dynamic_strings_raw);
 
     template<typename ELF_T>
     void build_dynamic_relocations(void);
@@ -112,6 +122,8 @@ class LIEF_API Builder {
     size_t note_offset(const Note& note);
 
     bool empties_gnuhash_;
+    bool has_dynamic_symtab;
+    bool has_dynamic_strtab;
 
     template<typename ELF_T>
     void relocate_dynamic_array(DynamicEntryArray& entry_array, DynamicEntry& entry_size);
@@ -122,7 +134,7 @@ class LIEF_API Builder {
     bool should_swap(void) const;
 
     mutable vector_iostream ios_;
-    Binary*           binary_;
+    Binary*                 binary_;
 
 
 };

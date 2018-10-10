@@ -62,8 +62,11 @@ class LIEF_API Binary : public LIEF::Binary {
   using string_list_t = std::vector<std::string>;
   using overlay_t     = std::vector<uint8_t>;
 
+  static std::unique_ptr<Binary> create_lief_core(ARCH arch);
+  static std::unique_ptr<Binary> create_lief_dyn(ARCH arch);
+
   public:
-  Binary(const std::string& name, ELF_CLASS type);
+  //Binary(const std::string& name, ELF_CLASS type);
 
   Binary& operator=(const Binary& ) = delete;
   Binary(const Binary& copy) = delete;
@@ -74,6 +77,11 @@ class LIEF_API Binary : public LIEF::Binary {
   //! @brief Return @link ELF::Header Elf header @endlink
   Header&       header(void);
   const Header& header(void) const;
+
+  uint64_t content_offset(void) const;
+  void content_offset(uint64_t offset);
+  uint64_t image_base(void) const;
+  void image_base(uint64_t address);
 
   //! @brief Return the last offset used in binary
   //! according to section headers
@@ -161,6 +169,8 @@ class LIEF_API Binary : public LIEF::Binary {
   Relocation&                            add_dynamic_relocation(const Relocation& relocation);
   Relocation&                            add_pltgot_relocation(const Relocation& relocation);
 
+  void                                   remove_relocations(void);
+
   //! @brief Return `plt.got` relocations
   it_pltgot_relocations                  pltgot_relocations(void);
   it_const_pltgot_relocations            pltgot_relocations(void) const;
@@ -191,16 +201,22 @@ class LIEF_API Binary : public LIEF::Binary {
   //! @see gnu_hash and use_sysv_hash
   bool use_gnu_hash(void) const;
 
-  //! @brief Return the GnuHash object in **readonly**
+  //! @brief Return the GnuHash object
   const GnuHash& gnu_hash(void) const;
+
+  //! @brief Initialize the GnuHash object
+  void gnu_hash(const GnuHash& gnu_hash);
 
   //! @brief ``true`` if SYSV hash is used
   //!
   //! @see sysv_hash and use_gnu_hash
   bool use_sysv_hash(void) const;
 
-  //! @brief Return the SysvHash object in **readonly**
+  //! @brief Return the SysvHash object
   const SysvHash& sysv_hash(void) const;
+
+  //! @brief Initialize the SysvHash object
+  void sysv_hash(const SysvHash& sysv_hash);
 
   //! @brief Check if a section with the given name exists in the binary
   bool has_section(const std::string& name) const;
@@ -224,7 +240,7 @@ class LIEF_API Binary : public LIEF::Binary {
   //! @brief Return program image base. For instance 0x40000
   //!
   //! To compute the image base, we look for the PT_PHDR segment header (phdr),
-  //! and we return phdr->p_vaddr - phdr->p_offset
+  //! and we return smallest phdr->p_vaddr
   uint64_t imagebase(void) const;
 
   //! @brief Return the size of the mapped binary
@@ -259,6 +275,8 @@ class LIEF_API Binary : public LIEF::Binary {
 
   Symbol& get_dynamic_symbol(const std::string& name);
 
+  void remove_dynamic_symbols(void);
+
   //! Check if the symbol with the given ``name`` exists in the static symbol table
   bool has_static_symbol(const std::string& name) const;
 
@@ -266,6 +284,8 @@ class LIEF_API Binary : public LIEF::Binary {
   const Symbol& get_static_symbol(const std::string& name) const;
 
   Symbol& get_static_symbol(const std::string& name);
+
+  void remove_static_symbols(void);
 
   //! Return list of strings used by the ELF binrary.
   //!
@@ -537,9 +557,9 @@ class LIEF_API Binary : public LIEF::Binary {
 
   virtual LIEF::Binary::functions_t get_abstract_exported_functions(void) const override;
   virtual LIEF::Binary::functions_t get_abstract_imported_functions(void) const override;
-  virtual std::vector<std::string> get_abstract_imported_libraries(void) const override;
-  virtual LIEF::symbols_t          get_abstract_symbols(void) override;
-  virtual LIEF::relocations_t      get_abstract_relocations(void) override;
+  virtual std::vector<std::string>  get_abstract_imported_libraries(void) const override;
+  virtual LIEF::symbols_t           get_abstract_symbols(void) override;
+  virtual LIEF::relocations_t       get_abstract_relocations(void) override;
 
   template<ELF::ARCH ARCH>
   void patch_relocations(uint64_t from, uint64_t shift);
@@ -566,16 +586,25 @@ class LIEF_API Binary : public LIEF::Binary {
   Section& add_section(const Section& section);
   symbols_t static_dyn_symbols(void) const;
 
+  template<class T>
+  LIEF_LOCAL static std::unique_ptr<Binary> create_lief_core_impl(ARCH arch, ELF_CLASS clazz);
+
+  template<class T>
+  LIEF_LOCAL static std::unique_ptr<Binary> create_lief_dyn_impl(ARCH arch, ELF_CLASS clazz);
+
   std::string shstrtab_name(void) const;
 
   LIEF::Binary::functions_t tor_functions(DYNAMIC_TAGS tag) const;
 
   //! The binary type
   //! (i.e. `ELF32` or `ELF64`)
-  ELF_CLASS         type_;
+  ELF_CLASS                     type_{ ELF_CLASS::ELFCLASSNONE };
 
   //! The binary's header as an object
   Header                        header_;
+
+  uint64_t                      content_offset_{ 0x0 };
+  uint64_t                      image_base_{ 0x0 };
 
   //! The binary's sections if any
   sections_t                    sections_;
@@ -604,16 +633,18 @@ class LIEF_API Binary : public LIEF::Binary {
   symbols_version_definition_t  symbol_version_definition_;
 
   //! .gnu.hash
+  bool                          use_gnu_hash_{ false };
   GnuHash                       gnu_hash_;
 
   //! .note
   notes_t                       notes_;
 
   //! .hash
+  bool                          use_sysv_hash_{ false };
   SysvHash                      sysv_hash_;
 
   //! object used to manage segments/sections
-  DataHandler::Handler*         datahandler_;
+  DataHandler::Handler*         datahandler_{nullptr};
 
   std::string                   interpreter_;
   overlay_t                     overlay_;

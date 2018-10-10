@@ -504,8 +504,8 @@ uint32_t Parser::get_numberof_dynamic_symbols(DYNSYM_COUNT_METHODS mtd) const {
         nb_dynsym_tmp = this->get_numberof_dynamic_symbols<ELF_T>(DYNSYM_COUNT_METHODS::COUNT_SECTION);
 
         if (nb_dynsym_tmp < Parser::NB_MAX_SYMBOLS and
-            nb_dynsym_tmp > nb_dynsym and
-            (nb_dynsym_tmp - nb_dynsym) < Parser::DELTA_NB_SYMBOLS) {
+            nb_dynsym_tmp > nb_dynsym /*and
+            (nb_dynsym_tmp - nb_dynsym) < Parser::DELTA_NB_SYMBOLS*/) {
           nb_dynsym = nb_dynsym_tmp;
         }
 
@@ -898,7 +898,7 @@ void Parser::parse_segments(void) {
 
   static const auto check_section_in_segment =
     [] (const Section* section, const Segment* segment) {
-      return section->virtual_address() > 0 and section->virtual_address() >= segment->virtual_address() and
+      return section->virtual_address() >= segment->virtual_address() and
         (section->virtual_address() + section->size()) <=
         (segment->virtual_address() + segment->virtual_size());
     };

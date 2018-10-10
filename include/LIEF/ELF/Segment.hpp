@@ -42,12 +42,12 @@ class LIEF_API Segment : public Object {
   friend class Binary;
 
   public:
+    virtual ~Segment(void) = default;
     Segment(void);
     Segment(const std::vector<uint8_t>&   header, ELF_CLASS type);
     Segment(const std::vector<uint8_t>&   header);
     Segment(const Elf64_Phdr* header);
     Segment(const Elf32_Phdr* header);
-    virtual ~Segment(void);
 
     Segment& operator=(Segment other);
     Segment(const Segment& other);
@@ -63,12 +63,20 @@ class LIEF_API Segment : public Object {
     uint64_t alignment(void) const;
     std::vector<uint8_t> content(void) const;
 
+    bool file_fixed(void) const;
+    bool memory_fixed(void) const;
+
+    void file_fixed(bool fixed);
+    void memory_fixed(bool fixed);
+
     bool has(ELF_SEGMENT_FLAGS flag) const;
     bool has(const Section& section) const;
     bool has(const std::string& section_name) const;
 
     void add(ELF_SEGMENT_FLAGS c);
+    //void add(const Section& section);
     void remove(ELF_SEGMENT_FLAGS c);
+    //void remove(const Section& section);
 
     void type(SEGMENT_TYPES type);
     void flags(ELF_SEGMENT_FLAGS flags);
@@ -96,6 +104,8 @@ class LIEF_API Segment : public Object {
     LIEF_API friend std::ostream& operator<<(std::ostream& os, const Segment& segment);
 
   private:
+    bool                  file_fixed_;
+    bool                  memory_fixed_;
     SEGMENT_TYPES         type_;
     ELF_SEGMENT_FLAGS     flags_;
     uint64_t              file_offset_;

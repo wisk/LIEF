@@ -51,6 +51,14 @@ void create<Section>(py::module& m) {
           return new Section(content.data(), type);
         }))
 
+    .def_property("file_fixed",
+      static_cast<getter_t<bool>>(&Section::file_fixed),
+      static_cast<setter_t<bool>>(&Section::file_fixed))
+
+    .def_property("memory_fixed",
+      static_cast<getter_t<bool>>(&Section::memory_fixed),
+      static_cast<setter_t<bool>>(&Section::memory_fixed))
+
     .def_property_readonly("name_idx",
         static_cast<getter_t<uint32_t>>(&Section::name_idx),
         "Index of the section's name in the string table\n\n"

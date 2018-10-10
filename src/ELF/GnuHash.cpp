@@ -37,6 +37,15 @@ GnuHash::GnuHash(void) :
   c_{0}
 {}
 
+GnuHash::GnuHash(uint32_t nbucket, uint32_t symndx, uint32_t bloom_size, uint32_t bloom_shift) :
+  symbol_index_{symndx},
+  shift2_{bloom_shift},
+  bloom_filters_(bloom_size),
+  buckets_(nbucket),
+  hash_values_{}
+{
+}
+
 
 GnuHash::GnuHash(uint32_t symbol_idx,
       uint32_t shift2,
@@ -147,7 +156,11 @@ std::ostream& operator<<(std::ostream& os, const GnuHash& gnuhash) {
 
         return a.empty() ? "[" + hex_bf.str() : a + ", " + hex_bf.str();
       });
-  bloom_filters_str += "]";
+  if (bloom_filters_str.empty()) {
+    bloom_filters_str = "[]";
+  } else {
+    bloom_filters_str += "]";
+  }
 
   std::string buckets_str = std::accumulate(
       std::begin(buckets),
@@ -159,7 +172,11 @@ std::ostream& operator<<(std::ostream& os, const GnuHash& gnuhash) {
 
         return a.empty() ? "[" + hex_bucket.str() : a + ", " + hex_bucket.str();
       });
-  buckets_str += "]";
+  if (buckets_str.empty()) {
+    buckets_str = "[]";
+  } else {
+    buckets_str += "]";
+  }
 
 
   std::string hash_values_str = std::accumulate(
@@ -172,7 +189,11 @@ std::ostream& operator<<(std::ostream& os, const GnuHash& gnuhash) {
 
         return a.empty() ? "[" + hex_hv.str() : a + ", " + hex_hv.str();
       });
-  hash_values_str += "]";
+  if (hash_values_str.empty()) {
+    hash_values_str = "[]";
+  } else {
+    hash_values_str += "]";
+  }
 
   os << std::setw(33) << std::setfill(' ') << "Number of buckets:"  << gnuhash.nb_buckets()   << std::endl;
   os << std::setw(33) << std::setfill(' ') << "First symbol index:" << gnuhash.symbol_index() << std::endl;

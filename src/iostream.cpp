@@ -46,6 +46,19 @@ size_t vector_iostream::sleb128_size(int64_t value) {
 void vector_iostream::reserve(size_t size) {
   this->raw_.reserve(size);
 }
+vector_iostream& vector_iostream::read(uint8_t* s, std::streamsize n)
+{
+  if (this->raw_.size() < (static_cast<size_t>(this->tellp()) + n)) {
+    throw read_out_of_bound(this->tellp(), n);
+  }
+
+  auto&& it = std::cbegin(this->raw_);
+  std::advance(it, static_cast<size_t>(this->tellp()));
+  std::copy(it, it + n, s);
+
+  this->current_pos_ += n;
+  return *this;
+}
 vector_iostream& vector_iostream::put(uint8_t c) {
 
   if (this->raw_.size() < (static_cast<size_t>(this->tellp()) + 1)) {
@@ -170,7 +183,7 @@ size_t vector_iostream::size(void) const {
 }
 
 // seeks:
-vector_iostream::pos_type vector_iostream::tellp(void) {
+vector_iostream::pos_type vector_iostream::tellp(void) const {
   return this->current_pos_;
 }
 vector_iostream& vector_iostream::seekp(vector_iostream::pos_type p) {
@@ -265,8 +278,4 @@ vector_iostream& vector_iostream::write(size_t count, uint8_t value) {
     );
     return *this;
 }
-
-
-
 }
-

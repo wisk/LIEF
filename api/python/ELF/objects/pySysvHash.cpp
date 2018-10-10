@@ -35,6 +35,7 @@ void create<SysvHash>(py::module& m) {
 
   py::class_<SysvHash, LIEF::Object>(m, "SysvHash")
     .def(py::init<>())
+    .def(py::init<uint32_t, uint32_t>())
 
     .def_property_readonly("nbucket",
       &SysvHash::nbucket,

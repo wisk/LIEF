@@ -87,7 +87,7 @@ uint64_t Section::virtual_address(void) const {
 }
 
 void Section::virtual_address(uint64_t virtual_address) {
-  this->virtual_address_ = virtual_address;;
+  this->virtual_address_ = virtual_address;
 }
 
 void Section::offset(uint64_t offset) {

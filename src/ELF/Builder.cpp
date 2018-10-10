@@ -35,6 +35,8 @@ Builder::~Builder(void) = default;
 
 Builder::Builder(Binary *binary) :
   empties_gnuhash_{false},
+  has_dynamic_symtab{binary->has(DYNAMIC_TAGS::DT_SYMTAB)},
+  has_dynamic_strtab{binary->has(DYNAMIC_TAGS::DT_STRTAB)},
   binary_{binary}
 {
   this->ios_.reserve(binary->original_size());
@@ -60,7 +62,7 @@ bool Builder::should_swap(void) const {
 
 
 void Builder::build(void) {
-  if(this->binary_->type() == ELF_CLASS::ELFCLASS32) {
+  if (this->binary_->type() == ELF_CLASS::ELFCLASS32) {
     this->build<ELF32>();
   } else {
     this->build<ELF64>();
@@ -77,6 +79,27 @@ Builder& Builder::empties_gnuhash(bool flag) {
   return *this;
 }
 
+void Builder::update_sections(void) {
+    for (const Section* section : this->binary_->sections_) {
+        ios_.seekp(section->file_offset());
+        ios_.write(section->content());
+    }
+}
+
+void Builder::update_segments(void) {
+    for (const Segment* segment : this->binary_->segments_) {
+        ios_.seekp(segment->file_offset());
+        ios_.write(segment->content());
+    }
+}
+
+void Builder::update_dynamic_entries(void) {
+  if (this->binary_->type() == ELF_CLASS::ELFCLASS32) {
+    this->update_dynamic_entries<ELF32>();
+  } else {
+    this->update_dynamic_entries<ELF64>();
+  }
+}
 
 void Builder::write(const std::string& filename) const {
   std::ofstream output_file{filename, std::ios::out | std::ios::binary | std::ios::trunc};
@@ -94,19 +117,8 @@ void Builder::write(const std::string& filename) const {
 
 void Builder::build_empty_symbol_gnuhash(void) {
   LOG(DEBUG) << "Build empty GNU Hash";
-  auto&& it_gnuhash = std::find_if(
-      std::begin(this->binary_->sections_),
-      std::end(this->binary_->sections_),
-      [] (const Section* section)
-      {
-        return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_GNU_HASH;
-      });
 
-  if (it_gnuhash == std::end(this->binary_->sections_)) {
-    throw corrupted("Unable to find the .gnu.hash section");
-  }
 
-  Section* gnu_hash_section = *it_gnuhash;
 
   vector_iostream content(this->should_swap());
   const uint32_t nb_buckets = 1;
@@ -126,10 +138,28 @@ void Builder::build_empty_symbol_gnuhash(void) {
   // shift2
   content.write_conv<uint32_t>(shift2);
 
+  auto&& it_gnuhash = std::find_if(
+    std::begin(this->binary_->sections_),
+    std::end(this->binary_->sections_),
+    [](const Section * section)
+    {
+      return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_GNU_HASH;
+    });
+
+  if (it_gnuhash == std::end(this->binary_->sections_)) {
+    Section gnu_hash_section{ ".gnu.hash", ELF_SECTION_TYPES::SHT_GNU_HASH };
+    gnu_hash_section.alignment(8);
+    // sh_link will be set during the .dynsym building
+    gnu_hash_section.content(content.raw());
+    this->binary_->add_section<true>(gnu_hash_section);
+    return;
+  }
+
+  Section* gnu_hash_section = *it_gnuhash;
+
   // fill with 0
   content.align(gnu_hash_section->size(), 0);
   gnu_hash_section->content(content.raw());
-
 }
 
 

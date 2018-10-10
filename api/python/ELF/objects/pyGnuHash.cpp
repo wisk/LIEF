@@ -36,6 +36,7 @@ void create<GnuHash>(py::module& m) {
 
   py::class_<GnuHash, LIEF::Object>(m, "GnuHash")
     .def(py::init<>())
+    .def(py::init<uint32_t, uint32_t, uint32_t, uint32_t>())
 
     .def_property_readonly("nb_buckets",
       &GnuHash::nb_buckets,

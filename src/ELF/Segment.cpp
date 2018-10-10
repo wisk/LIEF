@@ -30,9 +30,10 @@
 namespace LIEF {
 namespace ELF {
 
-Segment::~Segment(void) = default;
 Segment::Segment(const Segment& other) :
   Object{other},
+  file_fixed_{other.file_fixed_},
+  memory_fixed_{other.memory_fixed_},
   type_{other.type_},
   flags_{other.flags_},
   file_offset_{other.file_offset_},
@@ -49,6 +50,8 @@ Segment::Segment(const Segment& other) :
 
 
 Segment::Segment(const Elf64_Phdr* header) :
+  file_fixed_{true},
+  memory_fixed_{true},
   type_{static_cast<SEGMENT_TYPES>(header->p_type)},
   flags_{static_cast<ELF_SEGMENT_FLAGS>(header->p_flags)},
   file_offset_{header->p_offset},
@@ -63,6 +66,8 @@ Segment::Segment(const Elf64_Phdr* header) :
 {}
 
 Segment::Segment(const Elf32_Phdr* header) :
+  file_fixed_{true},
+  memory_fixed_{true},
   type_{static_cast<SEGMENT_TYPES>(header->p_type)},
   flags_{static_cast<ELF_SEGMENT_FLAGS>(header->p_flags)},
   file_offset_{header->p_offset},
@@ -77,6 +82,8 @@ Segment::Segment(const Elf32_Phdr* header) :
 {}
 
 Segment::Segment(void) :
+  file_fixed_{false},
+  memory_fixed_{false},
   type_{static_cast<SEGMENT_TYPES>(0)},
   flags_{ELF_SEGMENT_FLAGS::PF_NONE},
   file_offset_{0},
@@ -91,6 +98,8 @@ Segment::Segment(void) :
 {}
 
 void Segment::swap(Segment& other) {
+  std::swap(this->file_fixed_,       other.file_fixed_);
+  std::swap(this->memory_fixed_,     other.memory_fixed_);
   std::swap(this->type_,             other.type_);
   std::swap(this->flags_,            other.flags_);
   std::swap(this->file_offset_,      other.file_offset_);
@@ -182,6 +191,21 @@ std::vector<uint8_t> Segment::content(void) const {
   return {binary_content.data() + node.offset(), binary_content.data() + node.offset() + node.size()};
 }
 
+bool Segment::file_fixed(void) const {
+  return this->file_fixed_;
+}
+
+bool Segment::memory_fixed(void) const {
+  return this->memory_fixed_;
+}
+
+void Segment::file_fixed(bool fixed) {
+  this->file_fixed_ = fixed;
+}
+
+void Segment::memory_fixed(bool fixed) {
+  this->memory_fixed_ = fixed;
+}
 
 it_const_sections Segment::sections(void) const {
   return {this->sections_};
@@ -229,10 +253,35 @@ void Segment::add(ELF_SEGMENT_FLAGS flag) {
   this->flags(this->flags() | flag);
 }
 
+//void Segment::add(const Section& section)
+//{
+//  Section* new_section = new Section(section);
+//  this->sections_.push_back(new_section);
+//}
+
 
 void Segment::remove(ELF_SEGMENT_FLAGS flag) {
   this->flags(this->flags() & ~flag);
 }
+
+//void Segment::remove(const Section& section)
+//{
+//  auto&& it_section = std::find_if(
+//    std::begin(this->sections_),
+//    std::end(this->sections_),
+//    [&section](const Section* current_section)
+//    {
+//      return section == *current_section;
+//    }
+//  );
+//
+//  if (it_section != std::end(this->sections_)) {
+//    delete* it_section;
+//    this->sections_.erase(it_section);
+//  } else {
+//    throw not_found("Unable to find section '" + section.name() + "'");
+//  }
+//}
 
 
 void Segment::clear_flags(void) {
@@ -248,16 +297,19 @@ void Segment::file_offset(uint64_t file_offset) {
     node.offset(file_offset);
   }
   this->file_offset_ = file_offset;
+  this->file_fixed(true);
 }
 
 
 void Segment::virtual_address(uint64_t virtualAddress) {
   this->virtual_address_ = virtualAddress;
+  this->memory_fixed(true);
 }
 
 
 void Segment::physical_address(uint64_t physicalAddress) {
   this->physical_address_ = physicalAddress;
+  this->memory_fixed(true);
 }
 
 
@@ -322,8 +374,8 @@ void Segment::content(std::vector<uint8_t>&& content) {
   if (this->datahandler_ == nullptr) {
     VLOG(VDEBUG) << "Set content in the cache";
     this->content_c_ = std::move(content);
+    this->physical_size(this->content_c_.size());
 
-    this->physical_size(content.size());
     return;
   }
 
@@ -394,15 +446,17 @@ std::ostream& operator<<(std::ostream& os, const ELF::Segment& segment) {
 
   os << std::hex;
   os << std::left
-     << std::setw(18) << to_string(segment.type())
-     << std::setw(10) << flags
-     << std::setw(10) << segment.file_offset()
-     << std::setw(10) << segment.virtual_address()
-     << std::setw(10) << segment.physical_address()
-     << std::setw(10) << segment.physical_size()
-     << std::setw(10) << segment.virtual_size()
-     << std::setw(10) << segment.alignment()
-     << std::endl;
+     << std::setw(18)  << to_string(segment.type())
+     << std::setw(10)  << flags
+     << std::setw(10)  << segment.file_offset()
+     << std::setw(10)  << segment.virtual_address()
+     << std::setw(10)  << segment.physical_address()
+     << std::setw(10)  << segment.physical_size()
+     << std::setw(10)  << segment.virtual_size()
+     << std::setw(10)  << segment.alignment()
+     << std::boolalpha << segment.file_fixed() << "/"
+     << std::boolalpha << segment.memory_fixed()
+     << '\n';
 
   if (segment.sections().size() > 0) {
     os << "Sections in this segment :" << std::endl;
@@ -410,6 +464,8 @@ std::ostream& operator<<(std::ostream& os, const ELF::Segment& segment) {
       os << "\t" << section.name() << std::endl;
     }
   }
+  else
+    os << std::endl;
   return os;
 }
 }

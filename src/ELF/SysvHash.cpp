@@ -32,6 +32,11 @@ SysvHash::SysvHash(void) :
   chains_{}
 {}
 
+SysvHash::SysvHash(uint32_t nbucket, uint32_t nchain) :
+  buckets_(nbucket),
+  chains_(nchain)
+{}
+
 
 uint32_t SysvHash::nbucket(void) const {
   return static_cast<uint32_t>(this->buckets_.size());
@@ -94,7 +99,7 @@ std::ostream& operator<<(std::ostream& os, const SysvHash& sysvhash) {
 
         return a.empty() ? "[" + dec_bucket.str() : a + ", " + dec_bucket.str();
       });
-  buckets_str += "]";
+  chains_str += "]";
 
 
 

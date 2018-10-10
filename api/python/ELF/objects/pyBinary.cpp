@@ -42,7 +42,15 @@ void create<Binary>(py::module& m) {
 
   // Binary object
   py::class_<Binary, LIEF::Binary>(m, "Binary", "ELF binary representation")
-    .def(py::init<const std::string&, ELF_CLASS>())
+    //.def(py::init<const std::string&, ELF_CLASS>())
+    .def("create_lief_core",
+        &Binary::create_lief_core,
+        py::return_value_policy::take_ownership)
+
+    .def("create_lief_dyn",
+        &Binary::create_lief_dyn,
+        py::return_value_policy::take_ownership)
+
 
     .def_property_readonly("type",
         &Binary::type,
@@ -146,8 +154,9 @@ void create<Binary>(py::module& m) {
         &Binary::use_gnu_hash,
         "``True`` if GNU hash is used")
 
-    .def_property_readonly("gnu_hash",
-        &Binary::gnu_hash,
+    .def_property("gnu_hash",
+        static_cast<getter_t<const GnuHash&>>(&Binary::gnu_hash),
+        static_cast<setter_t<const GnuHash&>>(&Binary::gnu_hash),
         "Return the " RST_CLASS_REF(lief.ELF.GnuHash) " object\n\n"
         "Hash are used by the loader to speed up symbols resolving (GNU Version)",
         py::return_value_policy::reference_internal)
@@ -156,8 +165,9 @@ void create<Binary>(py::module& m) {
         &Binary::use_sysv_hash,
         "``True`` if SYSV hash is used")
 
-    .def_property_readonly("sysv_hash",
-        &Binary::sysv_hash,
+    .def_property("sysv_hash",
+        static_cast<getter_t<const SysvHash&>>(&Binary::sysv_hash),
+        static_cast<setter_t<const SysvHash&>>(&Binary::sysv_hash),
         "Return the " RST_CLASS_REF(lief.ELF.SysvHash) " object\n\n"
         "Hash are used by the loader to speed up symbols resolving (SYSV version)",
         py::return_value_policy::reference_internal)
@@ -379,6 +389,16 @@ void create<Binary>(py::module& m) {
         "Rebuild the binary and write it in a file",
         "output"_a,
         py::return_value_policy::reference_internal)
+
+    .def_property("content_offset",
+      static_cast<getter_t<uint64_t>>(&Binary::content_offset),
+      static_cast<setter_t<uint64_t>>(&Binary::content_offset),
+      "Return the file offset where content is located")
+
+    .def_property("image_base",
+      static_cast<getter_t<uint64_t>>(&Binary::image_base),
+      static_cast<setter_t<uint64_t>>(&Binary::image_base),
+      "Return the preferred image base")
 
     .def_property_readonly("last_offset_section",
         &Binary::last_offset_section,
