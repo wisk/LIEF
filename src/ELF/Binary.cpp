@@ -65,10 +65,8 @@ std::unique_ptr<Binary> Binary::create() {
   new_binary->header_.file_type(E_TYPE::ET_EXEC);
   new_binary->header_.machine_type(ARCH::EM_X86_64);
   new_binary->header_.object_file_version(VERSION::EV_CURRENT);
-  new_binary->header_.entrypoint(1234);
+  new_binary->header_.entrypoint(0);
 
-  new_binary->header_.program_headers_offset(1234);
-  new_binary->header_.section_headers_offset(1234);
 
   new_binary->header_.processor_flag(0);
 
@@ -86,10 +84,83 @@ std::unique_ptr<Binary> Binary::create() {
 
   new_binary->datahandler_ = new DataHandler::Handler{std::vector<uint8_t>{}};
 
+  size_t cursor = sizeof(ELF64::Elf_Ehdr);
+  // Add new null entry section
+
+  Section* null = new Section{"", ELF_SECTION_TYPES::SHT_NULL};
+  null->datahandler_ = new_binary->datahandler_;
+  new_binary->datahandler_->add({null->file_offset(), null->size(), DataHandler::Node::SECTION});
+
+  new_binary->sections_.push_back(null);
+
+  Section* shstrtab = new Section{".shstrtab", ELF_SECTION_TYPES::SHT_STRTAB};
+  shstrtab->offset(cursor);
+
+  shstrtab->datahandler_ = new_binary->datahandler_;
+  new_binary->datahandler_->add({shstrtab->file_offset(), 0, DataHandler::Node::SECTION});
+  shstrtab->size(100);
+  cursor += shstrtab->size();
+  new_binary->sections_.push_back(shstrtab);
+  new_binary->datahandler_->make_hole(shstrtab->file_offset(), shstrtab->size());
+
+  // Create PHDR Segement
+  // ====================
+  Segment* phdr = new Segment{};
+  phdr->file_offset(cursor);
+
+  phdr->datahandler_ = new_binary->datahandler_;
+  new_binary->datahandler_->add({phdr->file_offset(), 0, DataHandler::Node::SEGMENT});
+
+  phdr->type(SEGMENT_TYPES::PT_PHDR);
+  phdr->alignment(8);
+  phdr->flags(ELF_SEGMENT_FLAGS::PF_R);
+  //phdr->physical_size();
+
+  new_binary->segments_.push_back(phdr);
+
+  // Create LOAD segment associated with previous PHDR
+  // ==================================================
+  Segment* phdr_load = new Segment{};
+
+  phdr_load->datahandler_ = new_binary->datahandler_;
+  phdr_load->datahandler_->add({phdr_load->file_offset(), 0, DataHandler::Node::SEGMENT});
+
+  phdr_load->type(SEGMENT_TYPES::PT_LOAD);
+  phdr_load->alignment(0x1000);
+  phdr_load->flags(ELF_SEGMENT_FLAGS::PF_R);
+
+  new_binary->segments_.push_back(phdr_load);
 
 
+  new_binary->header_.section_headers_offset(cursor);
+  new_binary->header_.section_name_table_idx(new_binary->sections_.size() - 1);
 
-  return std::move(new_binary);
+  const size_t shdr_sizes = (new_binary->sections_.size() + 1) * sizeof(ELF64::Elf_Shdr);
+  cursor += shdr_sizes;
+
+
+  //new_binary->header_.program_headers_offset(cursor);
+  new_binary->header_.program_headers_offset(cursor);
+  const size_t phdr_sizes = (new_binary->segments_.size() + 1) * sizeof(ELF64::Elf_Phdr);
+
+  phdr->file_offset(new_binary->header_.program_headers_offset());
+  phdr->physical_size(phdr_sizes);
+
+  phdr->virtual_address(new_binary->header_.program_headers_offset());
+  phdr->virtual_size(phdr_sizes);
+
+  phdr_load->file_offset(new_binary->header_.program_headers_offset());
+  phdr_load->physical_size(phdr_sizes);
+
+  phdr_load->virtual_address(new_binary->header_.program_headers_offset());
+  phdr_load->virtual_size(phdr_sizes);
+
+  cursor += phdr_sizes;
+
+
+  new_binary->header().numberof_sections(new_binary->sections_.size());
+  new_binary->header().numberof_segments(new_binary->segments_.size());
+  return new_binary;
 }
 
 Header& Binary::header(void) {

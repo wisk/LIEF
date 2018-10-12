@@ -279,11 +279,12 @@ Segment& Binary::add_segment<E_TYPE::ET_EXEC>(const Segment& segment, uint64_t b
                s->has(ELF_SEGMENT_FLAGS::PF_X) and s->has(ELF_SEGMENT_FLAGS::PF_R);
       });
 
-  if (it_text_segment == std::end(this->segments_)) {
-    throw not_found("Unable to find a LOAD segment with 'r-x' permissions");
+  Segment* text_segment = nullptr;
+  if (it_text_segment != std::end(this->segments_)) {
+    //throw not_found("Unable to find a LOAD segment with 'r-x' permissions");
+    text_segment = *it_text_segment;
   }
 
-  Segment* text_segment = *it_text_segment;
 
   uint64_t last_offset_sections = std::accumulate(
       std::begin(this->sections_),
@@ -329,19 +330,19 @@ Segment& Binary::add_segment<E_TYPE::ET_EXEC>(const Segment& segment, uint64_t b
 
     VLOG(VDEBUG) << "New PHDR size 0x" << std::hex << new_phdr_size;
 
-    phdr_segment->file_offset(new_phdr_offset);
-    phdr_segment->virtual_address(text_segment->virtual_address() - text_segment->file_offset() + phdr_segment->file_offset());
+    //phdr_segment->file_offset(new_phdr_offset);
+    //phdr_segment->virtual_address(text_segment->virtual_address() - text_segment->file_offset() + phdr_segment->file_offset());
 
-    phdr_segment->physical_address(phdr_segment->virtual_address());
+    //phdr_segment->physical_address(phdr_segment->virtual_address());
 
     phdr_segment->physical_size(new_phdr_size);
     phdr_segment->virtual_size(phdr_segment->virtual_size() + phdr_size);
 
-    uint64_t gap  = phdr_segment->file_offset() + phdr_segment->physical_size();
-             gap -= text_segment->file_offset() + text_segment->physical_size();
+    //uint64_t gap  = phdr_segment->file_offset() + phdr_segment->physical_size();
+    //         gap -= text_segment->file_offset() + text_segment->physical_size();
 
-    text_segment->physical_size(text_segment->physical_size() + gap);
-    text_segment->virtual_size(text_segment->virtual_size() + gap);
+    //text_segment->physical_size(text_segment->physical_size() + gap);
+    //text_segment->virtual_size(text_segment->virtual_size() + gap);
 
     // Clear PHDR segment
     phdr_segment->content(std::vector<uint8_t>(phdr_segment->physical_size(), 0));
