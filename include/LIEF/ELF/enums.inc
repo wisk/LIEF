@@ -27,6 +27,8 @@ enum _LIEF_EN(E_TYPE) {
 
   _LIEF_EI(ET_LIEF)      = 0xFF10,  /**< Custom LIEF format */
   _LIEF_EI(ET_LIEF_CORE) = 0xFF11,  /**< Custom LIEF Core file */
+  _LIEF_EI(ET_LIEF_EXEC) = 0xFF12,  /**< Custom LIEF Executable file */
+  _LIEF_EI(ET_LIEF_DYN)  = 0xFF13,  /**< Custom LIEF Dynamic file */
 
   _LIEF_EI(ET_HIOS)   = 0xFEFF,  /**< Operating system-specific */
   _LIEF_EI(ET_LOPROC) = 0xFF00,  /**< Beginning of processor-specific codes */

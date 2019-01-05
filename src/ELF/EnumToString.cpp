@@ -38,7 +38,7 @@ const char* to_string(SYMBOL_BINDINGS e) {
 
 
 const char* to_string(E_TYPE e) {
-  CONST_MAP(E_TYPE, const char*, 11) enumStrings {
+  CONST_MAP(E_TYPE, const char*, 13) enumStrings {
     { E_TYPE::ET_NONE,   "NONE" },
     { E_TYPE::ET_REL,    "RELOCATABLE"  },
     { E_TYPE::ET_EXEC,   "EXECUTABLE"   },
@@ -49,6 +49,8 @@ const char* to_string(E_TYPE e) {
 
     { E_TYPE::ET_LIEF,      "LIEF"      },
     { E_TYPE::ET_LIEF_CORE, "LIEF_CORE" },
+    { E_TYPE::ET_LIEF_EXEC, "LIEF_EXEC" },
+    { E_TYPE::ET_LIEF_DYN,  "LIEF_DYN"  },
 
     { E_TYPE::ET_HIOS,   "HIOS"         },
     { E_TYPE::ET_LOPROC, "LOPROC"       },
