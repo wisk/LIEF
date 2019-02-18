@@ -63,6 +63,7 @@ class LIEF_API Binary : public LIEF::Binary {
   using overlay_t     = std::vector<uint8_t>;
 
   static std::unique_ptr<Binary> create_lief_core(ARCH arch);
+  static std::unique_ptr<Binary> create_lief_dyn(ARCH arch);
 
   public:
   //Binary(const std::string& name, ELF_CLASS type);
@@ -570,6 +571,9 @@ class LIEF_API Binary : public LIEF::Binary {
 
   template<class T>
   LIEF_LOCAL static std::unique_ptr<Binary> create_lief_core_impl(ARCH arch, ELF_CLASS clazz);
+
+  template<class T>
+  LIEF_LOCAL static std::unique_ptr<Binary> create_lief_dyn_impl(ARCH arch, ELF_CLASS clazz);
 
   LIEF::Binary::functions_t tor_functions(DYNAMIC_TAGS tag) const;
 

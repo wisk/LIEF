@@ -41,6 +41,7 @@
 #include "LIEF/ELF/hash.hpp"
 
 #include "Binary.tcc"
+#include "BinaryDyn.tcc"
 #include "Object.tcc"
 
 namespace LIEF {
@@ -69,6 +70,37 @@ std::unique_ptr<Binary> Binary::create_lief_core(ARCH arch) {
     case ARCH::EM_AARCH64:
       {
         return create_lief_core_impl<ELF64>(arch, ELF_CLASS::ELFCLASS64);
+      }
+
+    default:
+      {
+        return nullptr;
+      }
+  }
+}
+
+
+std::unique_ptr<Binary> Binary::create_lief_dyn(ARCH arch) {
+
+  switch (arch) {
+    case ARCH::EM_X86_64:
+      {
+        return create_lief_dyn_impl<ELF64>(arch, ELF_CLASS::ELFCLASS64);
+      }
+
+    case ARCH::EM_386:
+      {
+        return create_lief_dyn_impl<ELF32>(arch, ELF_CLASS::ELFCLASS32);
+      }
+
+    case ARCH::EM_ARM:
+      {
+        return create_lief_dyn_impl<ELF32>(arch, ELF_CLASS::ELFCLASS32);
+      }
+
+    case ARCH::EM_AARCH64:
+      {
+        return create_lief_dyn_impl<ELF64>(arch, ELF_CLASS::ELFCLASS64);
       }
 
     default:
@@ -1212,6 +1244,12 @@ Segment& Binary::add(const Segment& segment, uint64_t base) {
     case E_TYPE::ET_LIEF_CORE:
       {
         return this->add_segment<E_TYPE::ET_LIEF_CORE>(segment, new_base);
+        break;
+      }
+
+    case E_TYPE::ET_LIEF_DYN:
+      {
+        return this->add_segment<E_TYPE::ET_LIEF_DYN>(segment, new_base);
         break;
       }
 

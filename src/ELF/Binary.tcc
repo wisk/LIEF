@@ -805,7 +805,7 @@ std::unique_ptr<Binary> Binary::create_lief_core_impl(ARCH arch, ELF_CLASS clazz
 
   new_binary->header_.processor_flag(0);
 
-  new_binary->header_.header_size(sizeof(Elf_Phdr));
+  new_binary->header_.header_size(sizeof(Elf_Ehdr));
   new_binary->header_.program_header_size(sizeof(Elf_Phdr));
   new_binary->header_.section_header_size(sizeof(Elf_Shdr));
 
