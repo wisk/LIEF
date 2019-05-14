@@ -463,8 +463,7 @@ void Builder::build_static_symbols(void) {
     string_table.push_back(0);
   }
 
-  // Fill `content`
-  for (const Symbol* symbol : this->binary_->static_symbols_) {
+  auto write_static_symbol = [&string_table, &content](const Symbol* symbol) {
     VLOG(VDEBUG) << "Dealing with symbol: " << symbol->name();
     //TODO
     const std::string& name = symbol->name();
@@ -492,7 +491,27 @@ void Builder::build_static_symbols(void) {
     sym_hdr.st_size  = static_cast<Elf_Word>(symbol->size());
 
     content.write_conv<Elf_Sym>(sym_hdr);
+  };
+
+  // Fill `content`
+  // We first start with local symbols
+  Elf_Word numberof_local_symbols = 0;
+  for (const Symbol* symbol : this->binary_->static_symbols_) {
+    if (symbol->binding() != SYMBOL_BINDINGS::STB_LOCAL)
+      continue;
+    write_static_symbol(symbol);
+    ++numberof_local_symbols;
   }
+
+  // Next, we can process remaining symbols
+  for (const Symbol* symbol : this->binary_->static_symbols_) {
+    if (symbol->binding() == SYMBOL_BINDINGS::STB_LOCAL)
+      continue;
+    write_static_symbol(symbol);
+  }
+
+  // The .symtab::sh_info should contains the number of local symbols
+  symbol_section.information(numberof_local_symbols);
 
   // FIXME: Handle increase of size in symbol_str_section
   symbol_str_section.content(std::move(string_table));
