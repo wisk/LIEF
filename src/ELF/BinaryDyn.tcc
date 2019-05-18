@@ -163,7 +163,7 @@ std::unique_ptr<Binary> Binary::create_lief_dyn_impl(ARCH arch, ELF_CLASS clazz)
 
   shstrtab->datahandler_ = new_binary->datahandler_;
   new_binary->datahandler_->add({shstrtab->file_offset(), 0, DataHandler::Node::SECTION});
-  shstrtab->size(100);
+  shstrtab->size(0x100);
   cursor += shstrtab->size();
   new_binary->sections_.push_back(shstrtab);
   new_binary->datahandler_->make_hole(shstrtab->file_offset(), shstrtab->size());

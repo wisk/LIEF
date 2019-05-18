@@ -232,7 +232,9 @@ void Section::size(uint64_t size) {
         DataHandler::Node::SECTION);
     node.size(size);
   }
+  VLOG(VDEBUG) << "Old size: " << this->size_;
   this->size_ = size;
+  VLOG(VDEBUG) << "New size: " << this->size_;
 }
 
 

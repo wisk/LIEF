@@ -604,11 +604,31 @@ Segment& Binary::extend_segment<SEGMENT_TYPES::PT_LOAD>(const Segment& segment, 
 
 template<>
 Section& Binary::add_section<true>(const Section& section) {
-  VLOG(VDEBUG) << "Adding section '" << section.name() << "' in the binary (LOADED)";
+  VLOG(VDEBUG) << "Adding section '" << section << "' in the binary (LOADED)";
   // Create a Segment:
   Segment new_segment;
   new_segment.content(section.content());
-  new_segment.type(SEGMENT_TYPES::PT_LOAD);
+  SEGMENT_TYPES segment_type;
+  switch (section.type()) {
+    case ELF_SECTION_TYPES::SHT_DYNAMIC:
+      {
+        segment_type = SEGMENT_TYPES::PT_DYNAMIC;
+	break;
+      }
+
+    case ELF_SECTION_TYPES::SHT_NOTE:
+      {
+        segment_type = SEGMENT_TYPES::PT_NOTE;
+	break;
+      }
+
+    default:
+      {
+        segment_type = SEGMENT_TYPES::PT_LOAD;
+	break;
+      }
+  }
+  new_segment.type(segment_type);
 
   new_segment.virtual_address(section.virtual_address());
   new_segment.physical_address(section.virtual_address());
@@ -628,8 +648,9 @@ Section& Binary::add_section<true>(const Section& section) {
   }
 
   Segment& segment_added = this->add(new_segment);
+  segment_added.virtual_address(section.virtual_address());
 
-  VLOG(VDEBUG) << "Sgement associated: '" << segment_added << "'";
+  VLOG(VDEBUG) << "Segment associated: '" << segment_added << "'";
 
   Section* new_section = new Section{section};
   new_section->datahandler_ = this->datahandler_;
