@@ -44,6 +44,8 @@ Section::~Section(void) = default;
 
 Section::Section(const Elf64_Shdr* header) :
   LIEF::Section{},
+  file_fixed_{true},
+  memory_fixed_{true},
   name_idx_{header->sh_name},
   type_{static_cast<ELF_SECTION_TYPES>(header->sh_type)},
   flags_{header->sh_flags},
@@ -63,6 +65,8 @@ Section::Section(const Elf64_Shdr* header) :
 
 Section::Section(const Elf32_Shdr* header) :
   LIEF::Section{},
+  file_fixed_{true},
+  memory_fixed_{true},
   name_idx_{header->sh_name},
   type_{static_cast<ELF_SECTION_TYPES>(header->sh_type)},
   flags_{header->sh_flags},
@@ -82,6 +86,8 @@ Section::Section(const Elf32_Shdr* header) :
 
 Section::Section(void) :
   LIEF::Section{},
+  file_fixed_{false},
+  memory_fixed_{false},
   name_idx_{0},
   type_{ELF_SECTION_TYPES::SHT_PROGBITS},
   flags_{0},
@@ -102,6 +108,8 @@ Section::Section(void) :
 
 Section::Section(const std::string& name, ELF_SECTION_TYPES type) :
   LIEF::Section{name},
+  file_fixed_{false},
+  memory_fixed_{false},
   name_idx_{0},
   type_{type},
   flags_{0},
@@ -117,7 +125,9 @@ Section::Section(const std::string& name, ELF_SECTION_TYPES type) :
 
 
 Section::Section(uint8_t *data, ELF_CLASS type) :
-  LIEF::Section{}
+  LIEF::Section{},
+  file_fixed_{false},
+  memory_fixed_{false}
 {
   if (type == ELF_CLASS::ELFCLASS32) {
     *this = {reinterpret_cast<Elf32_Shdr*>(data)};
@@ -133,6 +143,8 @@ Section& Section::operator=(Section other) {
 
 Section::Section(const Section& other) :
   LIEF::Section{other},
+  file_fixed_{other.file_fixed_},
+  memory_fixed_{other.memory_fixed_},
   name_idx_{other.name_idx_},
   type_{other.type_},
   flags_{other.flags_},
@@ -155,6 +167,8 @@ void Section::swap(Section& other) {
   std::swap(this->offset_,          other.offset_);
   std::swap(this->size_,            other.size_);
 
+  std::swap(this->file_fixed_,     other.file_fixed_);
+  std::swap(this->memory_fixed_,   other.memory_fixed_);
   std::swap(this->name_idx_,       other.name_idx_);
   std::swap(this->type_,           other.type_);
   std::swap(this->flags_,          other.flags_);
@@ -232,9 +246,7 @@ void Section::size(uint64_t size) {
         DataHandler::Node::SECTION);
     node.size(size);
   }
-  VLOG(VDEBUG) << "Old size: " << this->size_;
   this->size_ = size;
-  VLOG(VDEBUG) << "New size: " << this->size_;
 }
 
 
@@ -246,6 +258,32 @@ void Section::offset(uint64_t offset) {
     node.offset(offset);
   }
   this->offset_ = offset;
+  this->file_fixed(true);
+}
+
+void Section::virtual_address(uint64_t virtual_address) {
+  this->virtual_address_ = virtual_address;
+  this->memory_fixed(true);
+}
+
+uint64_t Section::virtual_address(void) const {
+  return this->virtual_address_;
+}
+
+bool Section::file_fixed(void) const {
+  return this->file_fixed_;
+}
+
+bool Section::memory_fixed(void) const {
+  return this->memory_fixed_;
+}
+
+void Section::file_fixed(bool fixed) {
+  this->file_fixed_ = fixed;
+}
+
+void Section::memory_fixed(bool fixed) {
+  this->memory_fixed_ = fixed;
 }
 
 std::vector<uint8_t> Section::content(void) const {
@@ -333,7 +371,7 @@ void Section::content(std::vector<uint8_t>&& content) {
   if (this->datahandler_ == nullptr) {
     VLOG(VDEBUG) << "Set content in the cache";
     this->content_c_ = std::move(content);
-    this->size(content.size());
+    this->size(this->content_c_.size());
     return;
   }
 
@@ -481,14 +519,16 @@ std::ostream& operator<<(std::ostream& os, const Section& section)
 
   os << std::hex;
   os << std::left
-     << std::setw(20) << section.name()
-     << std::setw(15) << to_string(section.type())
-     << std::setw(10) << section.virtual_address()
-     << std::setw(10) << section.size()
-     << std::setw(10) << section.file_offset()
-     << std::setw(10) << section.entropy()
-     << std::setw(30) << flags_str
-     << std::setw(15) << segments_str;
+     << std::setw(20)  << section.name()
+     << std::setw(15)  << to_string(section.type())
+     << std::setw(10)  << section.virtual_address()
+     << std::setw(10)  << section.size()
+     << std::setw(10)  << section.file_offset()
+     << std::setw(10)  << section.entropy()
+     << std::setw(30)  << flags_str
+     << std::setw(15)  << segments_str
+     << std::boolalpha << section.file_fixed() << "/"
+     << std::boolalpha << section.memory_fixed();
 
   return os;
 }

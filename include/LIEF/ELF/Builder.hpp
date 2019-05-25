@@ -64,10 +64,13 @@ class LIEF_API Builder {
     void build_dynamic(void);
 
     template<typename ELF_T>
-    void build_dynamic_section(void);
+    void build_dynamic_section(std::vector<uint8_t>& dynamic_strings_raw);
 
     template<typename ELF_T>
-    void build_dynamic_symbols(void);
+    void build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw);
+
+    template<typename ELF_T>
+    void build_dynamic_strings(std::vector<uint8_t>& dynamic_strings_raw);
 
     template<typename ELF_T>
     void build_dynamic_relocations(void);

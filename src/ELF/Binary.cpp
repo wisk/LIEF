@@ -119,6 +119,26 @@ const Header& Binary::header(void) const {
   return this->header_;
 }
 
+uint64_t Binary::content_offset(void) const
+{
+  return this->content_offset_;
+}
+
+void Binary::content_offset(uint64_t offset)
+{
+  this->content_offset_ = offset;
+}
+
+uint64_t Binary::image_base(void) const
+{
+  return this->image_base_;
+}
+
+void Binary::image_base(uint64_t address)
+{
+  this->image_base_ = address;
+}
+
 
 ELF_CLASS Binary::type(void) const {
   return this->type_;
@@ -1119,7 +1139,7 @@ uint64_t Binary::imagebase(void) const {
   uint64_t imagebase = static_cast<uint64_t>(-1);
   for (const Segment* segment : this->segments_) {
     if (segment != nullptr and segment->type() == SEGMENT_TYPES::PT_LOAD) {
-      imagebase = std::min(imagebase, segment->virtual_address() - segment->file_offset());
+      imagebase = std::min(imagebase, segment->virtual_address());
     }
   }
   return imagebase;
@@ -1224,10 +1244,6 @@ bool Binary::has_nx(void) const {
 Segment& Binary::add(const Segment& segment, uint64_t base) {
   uint64_t new_base = base;
 
-  if (new_base == 0) {
-    new_base = this->next_virtual_address();
-  }
-
   switch(this->header().file_type()) {
     case E_TYPE::ET_EXEC:
       {
@@ -1277,9 +1293,11 @@ Segment& Binary::replace(const Segment& new_segment, const Segment& original_seg
 
   uint64_t new_base = base;
 
-  if (new_base == 0) {
+  if (new_segment.memory_fixed()) {
     new_base = this->next_virtual_address();
   }
+
+  // TODO: handle *_fixed cases
 
   std::vector<uint8_t> content = new_segment.content();
   Segment* new_segment_ptr = new Segment{new_segment};
@@ -1299,7 +1317,7 @@ Segment& Binary::replace(const Segment& new_segment, const Segment& original_seg
   const uint64_t last_offset_aligned = align(last_offset, psize);
   new_segment_ptr->file_offset(last_offset_aligned);
 
-  if (new_segment_ptr->virtual_address() == 0) {
+  if (!new_segment_ptr->memory_fixed()) {
     new_segment_ptr->virtual_address(new_base + last_offset_aligned);
   }
 
@@ -1399,7 +1417,7 @@ Section& Binary::extend(const Section& section, uint64_t size) {
 
   // Patch segment size for the segment which contains the new segment
   for (Segment* segment : this->segments_) {
-    if ((segment->file_offset() + segment->physical_size()) >= from_offset and
+    if ((segment->file_offset() + segment->physical_size()) >= from_offset and //TODO: handle section inside a segment?
         from_offset >= segment->file_offset()) {
       segment->virtual_size(segment->virtual_size()   + shift);
       segment->physical_size(segment->physical_size() + shift);
@@ -2675,7 +2693,7 @@ void Binary::overlay(Binary::overlay_t overlay) {
 std::string Binary::shstrtab_name(void) const {
   const Header& hdr = this->header();
   const size_t shstrtab_idx = hdr.section_name_table_idx();
-  if (shstrtab_idx < this->sections_.size()) {
+  if (shstrtab_idx != 0 and shstrtab_idx < this->sections_.size()) {
     return this->sections_[shstrtab_idx]->name();
   }
   return ".shstrtab";

@@ -78,9 +78,10 @@ void create<Relocation>(py::module& m) {
         &Relocation::has_section,
         "``True`` if a this relocation has a " RST_CLASS_REF(lief.ELF.Section) " associated")
 
-    .def_property_readonly("section",
+    .def_property("section",
         static_cast<Section& (Relocation::*)(void)>(&Relocation::section),
-        "" RST_CLASS_REF(lief.ELF.Section) " to which the relocation applies",
+        static_cast<void (Relocation::*)(Section*)>(&Relocation::section),
+        "" RST_CLASS_REF(lief.ELF.Section) " associated with the relocation",
         py::return_value_policy::reference)
 
     .def_property_readonly("is_rela",

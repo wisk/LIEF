@@ -265,8 +265,4 @@ vector_iostream& vector_iostream::write(size_t count, uint8_t value) {
     );
     return *this;
 }
-
-
-
 }
-

@@ -43,6 +43,14 @@ void create<Segment>(py::module& m) {
     .def(py::init<const std::vector<uint8_t>&>())
     .def(py::init<const std::vector<uint8_t>&, ELF_CLASS>())
 
+    .def_property("file_fixed",
+      static_cast<getter_t<bool>>(&Segment::file_fixed),
+      static_cast<setter_t<bool>>(&Segment::file_fixed))
+
+    .def_property("memory_fixed",
+      static_cast<getter_t<bool>>(&Segment::memory_fixed),
+      static_cast<setter_t<bool>>(&Segment::memory_fixed))
+
     .def_property("type",
         static_cast<getter_t<SEGMENT_TYPES>>(&Segment::type),
         static_cast<setter_t<SEGMENT_TYPES>>(&Segment::type),
@@ -95,17 +103,28 @@ void create<Segment>(py::module& m) {
         "Segment's raw data")
 
     .def("add",
-        &Segment::add,
+        static_cast<void (Segment::*)(ELF_SEGMENT_FLAGS)>(&Segment::add),
         "Add the given " RST_CLASS_REF(lief.ELF.SEGMENT_FLAGS) " to the list of "
         ":attr:`~lief.ELF.Segment.flags`",
         "flag"_a)
 
+    //.def("add",
+    //    static_cast<void (Segment::*)(const Section&)>(&Segment::add),
+    //    "Add the given " RST_CLASS_REF(lief.ELF.Section) " to the list of "
+    //    ":attr:`~lief.ELF.Segment.sections`",
+    //    "sections"_a)
+
     .def("remove",
-        &Segment::remove,
-        "Remove the given " RST_CLASS_REF(lief.ELF.SEGMENT_FLAGS) " to the list of "
+        static_cast<void (Segment::*)(ELF_SEGMENT_FLAGS)>(&Segment::remove),
+        "Remove the given " RST_CLASS_REF(lief.ELF.SEGMENT_FLAGS) " from the list of "
         ":attr:`~lief.ELF.Segment.flags`",
         "flag"_a)
 
+    //.def("remove",
+    //    static_cast<void (Segment::*)(const Section&)>(&Segment::add),
+    //    "Remove the given " RST_CLASS_REF(lief.ELF.Section) " from the list of "
+    //    ":attr:`~lief.ELF.Segment.sections`",
+    //    "sections"_a)
 
     .def("has",
         static_cast<bool (Segment::*)(ELF_SEGMENT_FLAGS) const>(&Segment::has),

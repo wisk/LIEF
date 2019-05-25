@@ -68,6 +68,12 @@ class LIEF_API Section : public LIEF::Section {
     // LIEF::Section implementation
     // ============================
 
+    bool file_fixed(void) const;
+    bool memory_fixed(void) const;
+
+    void file_fixed(bool fixed);
+    void memory_fixed(bool fixed);
+
     //! @brief Section's content
     virtual std::vector<uint8_t> content(void) const override;
 
@@ -98,6 +104,10 @@ class LIEF_API Section : public LIEF::Section {
 
     virtual uint64_t offset(void) const override;
 
+    virtual void virtual_address(uint64_t virtual_address) override;
+
+    virtual uint64_t virtual_address(void) const override;
+
 
     //! @see offset
     uint64_t file_offset(void) const;
@@ -106,7 +116,6 @@ class LIEF_API Section : public LIEF::Section {
     uint64_t information(void) const;
     uint64_t entry_size(void) const;
     uint32_t link(void) const;
-
 
     //! Clear the content of the section with the given ``value``
     Section& clear(uint8_t value = 0);
@@ -138,6 +147,8 @@ class LIEF_API Section : public LIEF::Section {
   private:
 
     // virtualAddress_, offset_ and size_ are inherited from LIEF::Section
+    bool                  file_fixed_;
+    bool                  memory_fixed_;
     uint32_t              name_idx_;
     ELF_SECTION_TYPES     type_;
     uint64_t              flags_;

@@ -78,6 +78,11 @@ class LIEF_API Binary : public LIEF::Binary {
   Header&       header(void);
   const Header& header(void) const;
 
+  uint64_t content_offset(void) const;
+  void content_offset(uint64_t offset);
+  uint64_t image_base(void) const;
+  void image_base(uint64_t address);
+
   //! @brief Return the last offset used in binary
   //! according to section headers
   uint64_t last_offset_section(void) const;
@@ -227,7 +232,7 @@ class LIEF_API Binary : public LIEF::Binary {
   //! @brief Return program image base. For instance 0x40000
   //!
   //! To compute the image base, we look for the PT_PHDR segment header (phdr),
-  //! and we return phdr->p_vaddr - phdr->p_offset
+  //! and we return smallest phdr->p_vaddr
   uint64_t imagebase(void) const;
 
   //! @brief Return the size of the mapped binary
@@ -540,9 +545,9 @@ class LIEF_API Binary : public LIEF::Binary {
 
   virtual LIEF::Binary::functions_t get_abstract_exported_functions(void) const override;
   virtual LIEF::Binary::functions_t get_abstract_imported_functions(void) const override;
-  virtual std::vector<std::string> get_abstract_imported_libraries(void) const override;
-  virtual LIEF::symbols_t          get_abstract_symbols(void) override;
-  virtual LIEF::relocations_t      get_abstract_relocations(void) override;
+  virtual std::vector<std::string>  get_abstract_imported_libraries(void) const override;
+  virtual LIEF::symbols_t           get_abstract_symbols(void) override;
+  virtual LIEF::relocations_t       get_abstract_relocations(void) override;
 
   template<ELF::ARCH ARCH>
   void patch_relocations(uint64_t from, uint64_t shift);
@@ -581,10 +586,13 @@ class LIEF_API Binary : public LIEF::Binary {
 
   //! The binary type
   //! (i.e. `ELF32` or `ELF64`)
-  ELF_CLASS         type_;
+  ELF_CLASS                     type_;
 
   //! The binary's header as an object
   Header                        header_;
+
+  uint64_t                      content_offset_{ 0x0 };
+  uint64_t                      image_base_{ 0x0 };
 
   //! The binary's sections if any
   sections_t                    sections_;

@@ -1,4 +1,6 @@
+#ifdef __unix__
 #include <link.h>
+#endif
 #include <LIEF/ELF.hpp>
 #include <iostream>
 #include <sstream>
@@ -7,6 +9,7 @@ using namespace LIEF::ELF;
 
 void dump(void) {
 
+#ifdef __unix__
   std::unique_ptr<Binary> core = Binary::create_lief_core(LIEF::ELF::ARCH::EM_X86_64);
 
   dl_iterate_phdr([] (dl_phdr_info* info, size_t size, void* data) {
@@ -35,6 +38,7 @@ void dump(void) {
     return 0;
   }, core.get());
   core->write("/tmp/bar");
+#endif
 }
 
 
