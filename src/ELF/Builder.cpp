@@ -35,6 +35,8 @@ Builder::~Builder(void) = default;
 
 Builder::Builder(Binary *binary) :
   empties_gnuhash_{false},
+  has_dynamic_symtab{binary->has(DYNAMIC_TAGS::DT_SYMTAB)},
+  has_dynamic_strtab{binary->has(DYNAMIC_TAGS::DT_STRTAB)},
   binary_{binary}
 {
   this->ios_.reserve(binary->original_size());

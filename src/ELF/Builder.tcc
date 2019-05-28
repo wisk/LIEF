@@ -243,6 +243,8 @@ void Builder::build_sections(void) {
 
   using Elf_Shdr = typename ELF_T::Elf_Shdr;
 
+  using Elf_Dyn  = typename ELF_T::Elf_Dyn;
+
   VLOG(VDEBUG) << "[+] Relocate sections";
 
   for (Segment& segment : this->binary_->segments()) {
@@ -274,22 +276,58 @@ void Builder::build_sections(void) {
     }
     section.file_offset(section_offset);
     section_offset += section.size();
+  }
 
-    // This is our last chance to update dynamic tags
+  vector_iostream dynamic_content(this->should_swap());
+  Section& dynamic_section = this->binary_->dynamic_section();
+  dynamic_content.reserve(dynamic_section.size());
+  dynamic_content.write(dynamic_section.content());
 
+  auto update_dynamic_section = [this, &dynamic_content](const DynamicEntry& entry) -> bool {
+    size_t numberof_dynamic_entries = this->binary_->dynamic_entries_.size();
+    dynamic_content.seekp(0);
+    for (size_t i = 0; i < numberof_dynamic_entries; ++i) {
+      Elf_Dyn dynent;
+      dynamic_content.read_conv(dynent);
+      if (static_cast<DYNAMIC_TAGS>(dynent.d_tag) == entry.tag()) {
+        dynent.d_un.d_ptr = entry.value();
+        dynamic_content.seekp(-sizeof(dynent), std::ios_base::cur);
+        dynamic_content.write_conv(dynent);
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // This is our last chance to update dynamic tags
+  for (Section& section : this->binary_->sections()) {
     switch (section.type()) {
-
       case ELF_SECTION_TYPES::SHT_STRTAB:
         {
           if (section.name() == ".dynstr") {
-            this->binary_->get(DYNAMIC_TAGS::DT_STRTAB).value(section.virtual_address());
-            this->binary_->get(DYNAMIC_TAGS::DT_STRSZ).value(section.size());
+            DynamicEntry& strtab_dynent = this->binary_->get(DYNAMIC_TAGS::DT_STRTAB);
+            strtab_dynent.value(section.virtual_address());
+            if (not update_dynamic_section(strtab_dynent)) {
+              throw not_found("Unable to update DT_STRTAB");
+            }
           }
           break;
         }
       case ELF_SECTION_TYPES::SHT_DYNSYM:
         {
-          this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB).value(section.virtual_address());
+          if (section.name() == ".dynsym") {
+            DynamicEntry& symtab_dynent = this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB);
+            symtab_dynent.value(section.virtual_address());
+            if (not update_dynamic_section(symtab_dynent)) {
+              throw not_found("Unable to update DT_SYMTAB");
+            }
+            DynamicEntry& strsz_dynent = this->binary_->get(DYNAMIC_TAGS::DT_STRSZ);
+            strsz_dynent.value(section.size());
+            if (not update_dynamic_section(strsz_dynent)) {
+              throw not_found("Unable to update DT_STRSZ");
+            }
+          }
           break;
         }
 
@@ -299,6 +337,7 @@ void Builder::build_sections(void) {
         }
     }
   }
+  dynamic_section.content(dynamic_content.raw());
 
   VLOG(VDEBUG) << "[+] Build sections";
 
@@ -457,7 +496,7 @@ template<
   uint64_t (Segment::*GET_BASE)() const,
   uint64_t (Segment::*GET_SIZE)() const>
 void segment_find_gaps(Segment& segment, uint64_t& base, gap_vector_t& gaps) {
-  if (!(segment.*IS_FIXED)()) {
+  if (not (segment.*IS_FIXED)()) {
     return;
   }
 
@@ -732,17 +771,17 @@ void Builder::build_dynamic(void) {
 
   std::vector<uint8_t> dynamic_strings_raw;
 
-  // We allocate dynamic entries here to make sure the
-  // both dynamic section and segment have the correct size
-  if (this->binary_->dynamic_symbols_.size() > 0) {
+  // Add placeholders entries
+  if (not this->has_dynamic_strtab) {
     this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_SYMTAB, 0x0 });
   }
-  if (dynamic_strings_raw.size() > 0) {
+  if (not this->has_dynamic_symtab) {
     this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_STRTAB, 0x0 });
     this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_STRSZ,  0x0 });
   }
 
   if (this->binary_->dynamic_symbols_.size() > 0) {
+
     this->build_dynamic_symbols<ELF_T>(dynamic_strings_raw);
   }
 
@@ -911,7 +950,7 @@ void Builder::build_dynamic_section(std::vector<uint8_t>& dynamic_strings_raw) {
   }
 
     // If none of section is SHT_DYNAMIC, we need to create the section .dynamic
-  if (!this->binary_->has(ELF_SECTION_TYPES::SHT_DYNAMIC)) {
+  if (not this->binary_->has(ELF_SECTION_TYPES::SHT_DYNAMIC)) {
     Section dynamic{".dynamic", ELF_SECTION_TYPES::SHT_DYNAMIC};
     dynamic.add(ELF_SECTION_FLAGS::SHF_WRITE | ELF_SECTION_FLAGS::SHF_ALLOC);
     dynamic.alignment(8);
@@ -1022,7 +1061,7 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
     symbol_table_raw.write_conv(sym_header);
   }
 
-  if (!this->binary_->has(DYNAMIC_TAGS::DT_SYMTAB)) {
+  if (not this->has_dynamic_symtab) {
     // Dynamic symbols section
     Section dynsym{ ".dynsym", ELF_SECTION_TYPES::SHT_DYNSYM };
     dynsym.add(ELF_SECTION_FLAGS::SHF_ALLOC);
@@ -1030,13 +1069,11 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
     dynsym.entry_size(sizeof(Elf_Sym));
     this->binary_->add_section<true>(dynsym);
 
-    this->binary_->add({ DYNAMIC_TAGS::DT_SYMTAB, dynsym.size() });
+    this->has_dynamic_symtab = true;
 
     return;
   }
 
-  // Find useful sections
-// ====================
   Elf_Addr symbol_table_va = this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB).value();
 
   // Find the section associated with the address
@@ -1062,7 +1099,7 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
 
     symbol_table_section.original_size_ = new_dynsym_load.physical_size();
 
-    //this->binary_->get(DYNAMIC_TAGS::DT_STRSZ).value(symbol_table_raw.size());
+    this->binary_->get(DYNAMIC_TAGS::DT_STRSZ).value(symbol_table_raw.size());
     this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB).value(new_dynsym_load.virtual_address());
 
     return this->build_dynamic<ELF_T>();
@@ -1078,7 +1115,7 @@ void Builder::build_dynamic_strings(std::vector<uint8_t>& dynamic_strings_raw) {
 
   Section* dyn_strtab_section = nullptr;
 
-  if (this->binary_->has(DYNAMIC_TAGS::DT_STRTAB)) {
+  if (this->has_dynamic_strtab) {
     const Elf_Addr dyn_strtab_va = this->binary_->get(DYNAMIC_TAGS::DT_STRTAB).value();
     Section* dyn_strtab_section = &this->binary_->section_from_virtual_address(dyn_strtab_va);
 
@@ -1089,18 +1126,13 @@ void Builder::build_dynamic_strings(std::vector<uint8_t>& dynamic_strings_raw) {
     dynstr.content(dynamic_strings_raw);
     dyn_strtab_section = &this->binary_->add_section<true>(dynstr);
 
-    // Add two entries for DT_STRTAB and DT_STRSZ, DT_STRTAB will be initialized
-    // during the section relocation
-    this->binary_->add({ DYNAMIC_TAGS::DT_STRTAB, 0x0 });
-    this->binary_->add({ DYNAMIC_TAGS::DT_STRSZ,  dynstr.size() });
-
     uint32_t dynstr_index = static_cast<uint32_t>(this->binary_->sections_.size() - 1);
 
     // Since we just have created a new .dynstr section, we must update the
     // .dynamic sh_link field
     this->binary_->dynamic_section().link(dynstr_index);
 
-    // Do the same for .dynstr
+    // Do the same for .dynsym
     auto&& it_dynsym = std::find_if(
       std::begin(this->binary_->sections_),
       std::end(this->binary_->sections_),
@@ -1112,6 +1144,8 @@ void Builder::build_dynamic_strings(std::vector<uint8_t>& dynamic_strings_raw) {
     if (it_dynsym != std::end(this->binary_->sections_)) {
       (*it_dynsym)->link(dynstr_index);
     }
+
+    this->has_dynamic_strtab = true;
 
     return;
   }

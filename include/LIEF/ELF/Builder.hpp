@@ -115,6 +115,8 @@ class LIEF_API Builder {
     size_t note_offset(const Note& note);
 
     bool empties_gnuhash_;
+    bool has_dynamic_symtab;
+    bool has_dynamic_strtab;
 
     template<typename ELF_T>
     void relocate_dynamic_array(DynamicEntryArray& entry_array, DynamicEntry& entry_size);
@@ -125,7 +127,7 @@ class LIEF_API Builder {
     bool should_swap(void) const;
 
     mutable vector_iostream ios_;
-    Binary*           binary_;
+    Binary*                 binary_;
 
 
 };

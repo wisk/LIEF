@@ -20,7 +20,9 @@
 #include <cstdint>
 #include <vector>
 
+#include "LIEF/exception.hpp"
 #include "LIEF/BinaryStream/Convert.hpp"
+
 
 namespace LIEF {
 class vector_iostream {
@@ -32,6 +34,12 @@ class vector_iostream {
 
   vector_iostream(bool endian_swap=false);
   void reserve(size_t size);
+
+  // TODO: Implement other methods
+  vector_iostream& read(uint8_t* s, std::streamsize n);
+
+  template<typename T>
+  vector_iostream& read_conv(T& t);
 
   vector_iostream& put(uint8_t c);
   vector_iostream& write(const uint8_t* s, std::streamsize n);
@@ -47,6 +55,22 @@ class vector_iostream {
   vector_iostream& write_conv_array(const std::vector<T>& v);
 
   vector_iostream& align(size_t size, uint8_t val = 0);
+
+  template<class Integer, typename = typename std::enable_if<std::is_integral<Integer>::value>>
+  vector_iostream& read(Integer& integer) const {
+    if (this->raw_.size() < (static_cast<size_t>(this->tellp()) + sizeof(Integer))) {
+      this->raw_.resize(static_cast<size_t>(this->tellp()) + sizeof(Integer));
+    }
+
+    auto&& it = std::cbegin(this->raw_);
+    std::advance(it, static_cast<size_t>(this->tellp()));
+    std::copy(
+      it, it + sizeof(integer),
+      &integer);
+
+    this->current_pos_ += sizeof(Integer);
+    return *this;
+  }
 
   template<class Integer, typename = typename std::enable_if<std::is_integral<Integer>::value>>
   vector_iostream& write(Integer integer) {
@@ -90,6 +114,17 @@ class vector_iostream {
   bool                 endian_swap_{false};
 };
 
+
+template<typename T>
+inline vector_iostream& vector_iostream::read_conv(T& t)
+{
+  this->read(reinterpret_cast<uint8_t*>(&t), sizeof(t));
+  if (this->endian_swap_) {
+    LIEF::Convert::swap_endian(&t);
+  }
+
+  return *this;
+}
 
 template<typename T>
 vector_iostream& vector_iostream::write_conv(const T& t) {
