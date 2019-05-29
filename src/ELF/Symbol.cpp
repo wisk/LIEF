@@ -30,6 +30,8 @@
 namespace LIEF {
 namespace ELF {
 
+const Symbol Symbol::null{};
+
 Symbol::Symbol(void) :
   LIEF::Symbol{},
   type_{ELF_SYMBOL_TYPES::STT_NOTYPE},

@@ -39,6 +39,8 @@ class LIEF_API Symbol : public LIEF::Symbol {
   friend class Binary;
 
   public:
+    const static Symbol null;
+
     Symbol(const Elf32_Sym* header);
     Symbol(const Elf64_Sym* header);
     Symbol(std::string name,

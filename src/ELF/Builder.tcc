@@ -283,7 +283,7 @@ void Builder::build_sections(void) {
   dynamic_content.reserve(dynamic_section.size());
   dynamic_content.write(dynamic_section.content());
 
-  auto update_dynamic_section = [this, &dynamic_content](const DynamicEntry& entry) -> bool {
+  auto update_dynamic_entry = [this, &dynamic_content](const DynamicEntry& entry) -> bool {
     size_t numberof_dynamic_entries = this->binary_->dynamic_entries_.size();
     dynamic_content.seekp(0);
     for (size_t i = 0; i < numberof_dynamic_entries; ++i) {
@@ -306,9 +306,9 @@ void Builder::build_sections(void) {
       case ELF_SECTION_TYPES::SHT_STRTAB:
         {
           if (section.name() == ".dynstr") {
-            DynamicEntry& strtab_dynent = this->binary_->get(DYNAMIC_TAGS::DT_STRTAB);
-            strtab_dynent.value(section.virtual_address());
-            if (not update_dynamic_section(strtab_dynent)) {
+            DynamicEntry& de_strtab = this->binary_->get(DYNAMIC_TAGS::DT_STRTAB);
+            de_strtab.value(section.virtual_address());
+            if (not update_dynamic_entry(de_strtab)) {
               throw not_found("Unable to update DT_STRTAB");
             }
           }
@@ -317,16 +317,37 @@ void Builder::build_sections(void) {
       case ELF_SECTION_TYPES::SHT_DYNSYM:
         {
           if (section.name() == ".dynsym") {
-            DynamicEntry& symtab_dynent = this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB);
-            symtab_dynent.value(section.virtual_address());
-            if (not update_dynamic_section(symtab_dynent)) {
+            DynamicEntry& de_symtab = this->binary_->get(DYNAMIC_TAGS::DT_SYMTAB);
+            de_symtab.value(section.virtual_address());
+            if (not update_dynamic_entry(de_symtab)) {
               throw not_found("Unable to update DT_SYMTAB");
             }
-            DynamicEntry& strsz_dynent = this->binary_->get(DYNAMIC_TAGS::DT_STRSZ);
-            strsz_dynent.value(section.size());
-            if (not update_dynamic_section(strsz_dynent)) {
+            DynamicEntry& de_strsz = this->binary_->get(DYNAMIC_TAGS::DT_STRSZ);
+            de_strsz.value(section.size());
+            if (not update_dynamic_entry(de_strsz)) {
               throw not_found("Unable to update DT_STRSZ");
             }
+          }
+          break;
+        }
+
+      case ELF_SECTION_TYPES::SHT_REL:
+      case ELF_SECTION_TYPES::SHT_RELA:
+        {
+          DYNAMIC_TAGS dt = DYNAMIC_TAGS::DT_NULL;
+          if (section.name() == ".rel.dyn") {
+            dt = DYNAMIC_TAGS::DT_REL;
+          } else if (section.name() == ".rela.dyn") {
+            dt = DYNAMIC_TAGS::DT_RELA;
+          } else if (section.name() == ".rela.plt") {
+            dt = DYNAMIC_TAGS::DT_JMPREL;
+          } else {
+            break;
+          }
+          DynamicEntry& de = this->binary_->get(dt);
+          de.value(section.virtual_address());
+          if (not update_dynamic_entry(de)) {
+            throw not_found(std::string("Unable to update DT_") + to_string(dt));
           }
           break;
         }
@@ -528,6 +549,7 @@ template<
       (segment.*SET_BASE)(gap.base);
       gap.base += segment_size;
       gap.size -= segment_size;
+      // TODO: remove gap entry if size == 0
       return;
     }
   }
@@ -543,16 +565,10 @@ void Builder::build_segments(void) {
   using Elf_Off  = typename ELF_T::Elf_Off;
   using Elf_Word = typename ELF_T::Elf_Word;
 
+  using Elf_Ehdr = typename ELF_T::Elf_Ehdr;
   using Elf_Phdr = typename ELF_T::Elf_Phdr;
 
-  // TODO: Check if we need to relocate the PHDR
-  // TODO: Create the PT_PHDR
-  //uint64_t phdr_end = this->binary_->header().program_headers_offset() + this->binary_->segments_.size() * sizeof(Elf_Phdr);
-
   VLOG(VDEBUG) << "[+] Relocate unfixed segments";
-
-  // TODO:
-  this->binary_->content_offset(0x10000);
 
   // We start by finding all gaps
   gap_vector_t file_gaps;
@@ -563,13 +579,13 @@ void Builder::build_segments(void) {
   for (Segment* segment : this->binary_->segments_) {
     segment_find_gaps<
       &Segment::file_fixed,
-      &Segment::file_offset,
-      &Segment::physical_size
+      & Segment::file_offset,
+      & Segment::physical_size
     >(*segment, file_base, file_gaps);
     segment_find_gaps<
       &Segment::memory_fixed,
-      &Segment::virtual_address,
-      &Segment::virtual_size
+      & Segment::virtual_address,
+      & Segment::virtual_size
     >(*segment, memory_base, memory_gaps);
   }
 
@@ -581,16 +597,73 @@ void Builder::build_segments(void) {
     }
     segment_relocate<
       &Segment::file_fixed,
-      &Segment::file_offset, &Segment::file_offset,
-      &Segment::physical_size
+      & Segment::file_offset, & Segment::file_offset,
+      & Segment::physical_size
     >(*segment, file_base, file_gaps);
     segment_relocate<
       &Segment::memory_fixed,
-      &Segment::virtual_address, &Segment::virtual_address,
-      &Segment::virtual_size
+      & Segment::virtual_address, & Segment::virtual_address,
+      & Segment::virtual_size
     >(*segment, memory_base, memory_gaps);
     segment->physical_address(segment->virtual_address());
   }
+
+  // We look for the best place for the PHDR
+  uint64_t phdr_size = sizeof(Elf_Phdr) * (this->binary_->segments_.size() + 1);
+  uint64_t phdr_offset = 0x0;
+  uint64_t phdr_address = 0x0;
+
+  // Check if we have enough space before the content
+  if (sizeof(Elf_Ehdr) + phdr_size < this->binary_->content_offset_) {
+    phdr_offset = sizeof(Elf_Ehdr);
+    phdr_address = sizeof(Elf_Ehdr);
+
+    // If not, let's see if we can fill a gap
+  }
+  else {
+    for (gap gap : file_gaps) {
+      if (phdr_size <= gap.size) {
+        phdr_offset = gap.base;
+        gap.base += phdr_size;
+        gap.size -= phdr_size;
+        // TODO: remove gap entry if size == 0
+        break;
+      }
+    }
+    // We failed to find enough room in a gap, we have to put it at the end
+    if (phdr_offset == 0x0) {
+      phdr_offset = file_base;
+      file_base += phdr_size;
+    }
+
+    for (gap gap : memory_gaps) {
+      if (phdr_size <= gap.size) {
+        phdr_address = gap.base;
+        gap.base += phdr_size;
+        gap.size -= phdr_size;
+        // TODO: remove gap entry if size == 0
+        break;
+      }
+    }
+    // We failed to find enough room in a gap, we have to put it at the end
+    if (phdr_address == 0x0) {
+      phdr_address = memory_base;
+      memory_base += phdr_size;
+    }
+  }
+
+  // Add the PT_PHDR at the first position
+  Segment* phdr_segment = new Segment;
+  phdr_segment->type(SEGMENT_TYPES::PT_PHDR);
+  phdr_segment->file_offset(phdr_offset);
+  phdr_segment->physical_size(phdr_size);
+  phdr_segment->virtual_address(phdr_address);
+  phdr_segment->physical_address(phdr_address);
+  phdr_segment->virtual_size(phdr_size);
+  phdr_segment->flags(ELF_SEGMENT_FLAGS::PF_R);
+  phdr_segment->alignment(8);
+  this->binary_->segments_.insert(std::begin(this->binary_->segments_), phdr_segment);
+  this->binary_->header().numberof_segments(this->binary_->segments_.size());
 
   VLOG(VDEBUG) << "[+] Build segments";
 
@@ -705,7 +778,7 @@ void Builder::build_static_symbols(void) {
   }
 
   // Fill `content`
-  auto write_static_symbol = [&string_table, &content](const Symbol * symbol) {
+  auto write_static_symbol = [&string_table, &content](const Symbol* symbol) {
     VLOG(VDEBUG) << "Dealing with symbol: " << symbol->name();
     //TODO
     const std::string& name = symbol->name();
@@ -763,7 +836,6 @@ void Builder::build_static_symbols(void) {
  *   - Dynamic section
  *   - Dynamic string table
  *   - Dynamic symbol
- *   - Dynamic relocation
  */
 template<typename ELF_T>
 void Builder::build_dynamic(void) {
@@ -778,6 +850,7 @@ void Builder::build_dynamic(void) {
   if (not this->has_dynamic_symtab) {
     this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_STRTAB, 0x0 });
     this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_STRSZ,  0x0 });
+    this->binary_->add(DynamicEntry{ DYNAMIC_TAGS::DT_SYMENT, sizeof(ELF_T::Elf_Sym) });
   }
 
   if (this->binary_->dynamic_symbols_.size() > 0) {
@@ -1036,7 +1109,7 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
   // Build symbols
   //
   vector_iostream symbol_table_raw(this->should_swap());
-  for (const Symbol* symbol : this->binary_->dynamic_symbols_) {
+  auto write_dynamic_symbol = [&dynamic_strings_raw, &symbol_table_raw](const Symbol* symbol) {
     const std::string& name = symbol->name();
     // Check if name is already pressent
     auto&& it_name = std::search(
@@ -1059,6 +1132,21 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
     sym_header.st_size = static_cast<Elf_Word>(symbol->size());
 
     symbol_table_raw.write_conv(sym_header);
+  };
+
+  Elf_Word numberof_local_symbols = 0;
+  for (const Symbol* symbol : this->binary_->dynamic_symbols_) {
+    if (symbol->binding() != SYMBOL_BINDINGS::STB_LOCAL) {
+      continue;
+    }
+    ++numberof_local_symbols;
+    write_dynamic_symbol(symbol);
+  }
+  for (const Symbol* symbol : this->binary_->dynamic_symbols_) {
+    if (symbol->binding() == SYMBOL_BINDINGS::STB_LOCAL) {
+      continue;
+    }
+    write_dynamic_symbol(symbol);
   }
 
   if (not this->has_dynamic_symtab) {
@@ -1067,7 +1155,27 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
     dynsym.add(ELF_SECTION_FLAGS::SHF_ALLOC);
     dynsym.content(symbol_table_raw.raw());
     dynsym.entry_size(sizeof(Elf_Sym));
+    dynsym.information(numberof_local_symbols);
+    uint32_t dynsym_index = this->binary_->sections_.size();
     this->binary_->add_section<true>(dynsym);
+
+    for (Section* section : this->binary_->sections_) {
+      switch (section->type()) {
+        case ELF_SECTION_TYPES::SHT_REL:
+        case ELF_SECTION_TYPES::SHT_RELA:
+        case ELF_SECTION_TYPES::SHT_HASH:
+        case ELF_SECTION_TYPES::SHT_GNU_HASH:
+          {
+            section->link(dynsym_index);
+            break;
+          }
+
+        default:
+          {
+            break;
+          }
+      }
+    }
 
     this->has_dynamic_symtab = true;
 
@@ -1078,6 +1186,7 @@ void Builder::build_dynamic_symbols(std::vector<uint8_t>& dynamic_strings_raw) {
 
   // Find the section associated with the address
   Section& symbol_table_section = this->binary_->section_from_virtual_address(symbol_table_va);
+  symbol_table_section.information(numberof_local_symbols);
 
   VLOG(VDEBUG) << "SYMTAB's address: 0x" << std::hex << symbol_table_va;
   VLOG(VDEBUG) << "SYMTAB's section: " << symbol_table_section.name().c_str();
@@ -1492,12 +1601,12 @@ void Builder::build_section_relocations(void) {
 
   it_object_relocations  object_relocations = this->binary_->object_relocations();
 
-  bool isRela = object_relocations[0].is_rela();
+  bool is_rela = object_relocations[0].is_rela();
   if (not std::all_of(
         std::begin(object_relocations),
         std::end(object_relocations),
-        [isRela] (const Relocation& relocation) {
-          return relocation.is_rela() == isRela;
+        [is_rela] (const Relocation& relocation) {
+          return relocation.is_rela() == is_rela;
         })) {
       throw LIEF::type_error("Object relocations are not of the same type");
   }
@@ -1506,7 +1615,7 @@ void Builder::build_section_relocations(void) {
 
   std::vector<Section*> rel_section;
   for(Section& S: sections)
-    if(S.type() == ((isRela)?ELF_SECTION_TYPES::SHT_RELA:ELF_SECTION_TYPES::SHT_REL))
+    if(S.type() == ((is_rela)?ELF_SECTION_TYPES::SHT_RELA:ELF_SECTION_TYPES::SHT_REL))
       rel_section.push_back(&S);
 
 
@@ -1565,7 +1674,7 @@ void Builder::build_section_relocations(void) {
         info = (static_cast<Elf_Xword>(idx) << 32) | (relocation.type() & 0xffffffffL);
       }
 
-      if (isRela) {
+      if (is_rela) {
         Elf_Rela relahdr;
         relahdr.r_offset = static_cast<Elf_Addr>(relocation.address());
         relahdr.r_info   = static_cast<Elf_Xword>(info);
@@ -1590,10 +1699,10 @@ void Builder::build_section_relocations(void) {
     }
 
     VLOG(VDEBUG) << "Section associated with object relocations: " << section->name();
-    VLOG(VDEBUG) << "Is Rela: " << std::boolalpha << isRela;
+    VLOG(VDEBUG) << "Is Rela: " << std::boolalpha << is_rela;
     // Relocation the '.rela.xxxx' section
     if (content.size() > section->original_size() and section->original_size() > 0) {
-      Section rela_section(section->name(), (isRela)?ELF_SECTION_TYPES::SHT_RELA:ELF_SECTION_TYPES::SHT_REL);
+      Section rela_section(section->name(), (is_rela)?ELF_SECTION_TYPES::SHT_RELA:ELF_SECTION_TYPES::SHT_REL);
       rela_section.content(content);
       this->binary_->add(rela_section, false);
       this->binary_->remove(*section, true);
@@ -1618,71 +1727,14 @@ void Builder::build_dynamic_relocations(void) {
 
   it_dynamic_relocations dynamic_relocations = this->binary_->dynamic_relocations();
 
-  bool isRela = dynamic_relocations[0].is_rela();
+  bool is_rela = dynamic_relocations[0].is_rela();
   if (not std::all_of(
         std::begin(dynamic_relocations),
         std::end(dynamic_relocations),
-        [isRela] (const Relocation& relocation) {
-          return relocation.is_rela() == isRela;
+        [is_rela] (const Relocation& relocation) {
+          return relocation.is_rela() == is_rela;
         })) {
       throw LIEF::type_error("Relocation are not of the same type");
-  }
-
-  dynamic_entries_t::iterator it_dyn_relocation;
-  dynamic_entries_t::iterator it_dyn_relocation_size;
-
-  if (isRela) {
-    it_dyn_relocation = std::find_if(
-        std::begin(this->binary_->dynamic_entries_),
-        std::end(this->binary_->dynamic_entries_),
-        [] (const DynamicEntry* entry)
-        {
-          return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELA;
-        });
-
-    it_dyn_relocation_size = std::find_if(
-        std::begin(this->binary_->dynamic_entries_),
-        std::end(this->binary_->dynamic_entries_),
-        [] (const DynamicEntry* entry)
-        {
-          return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELASZ ;
-        });
-  } else {
-    it_dyn_relocation = std::find_if(
-        std::begin(this->binary_->dynamic_entries_),
-        std::end(this->binary_->dynamic_entries_),
-        [] (const DynamicEntry* entry)
-        {
-          return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_REL;
-        });
-
-    it_dyn_relocation_size = std::find_if(
-        std::begin(this->binary_->dynamic_entries_),
-        std::end(this->binary_->dynamic_entries_),
-        [] (const DynamicEntry* entry)
-        {
-          return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELSZ ;
-        });
-  }
-
-  if (it_dyn_relocation == std::end(this->binary_->dynamic_entries_)) {
-    throw LIEF::not_found("Unable to find the DT_REL{A} entry");
-  }
-
-  if (it_dyn_relocation_size == std::end(this->binary_->dynamic_entries_)) {
-    throw LIEF::not_found("Unable to find the DT_REL{A}SZ entry");
-  }
-
-
-  DynamicEntry* dt_reloc_addr = *it_dyn_relocation;
-  DynamicEntry* dt_reloc_size = *it_dyn_relocation_size;
-
-  Section& relocation_section = this->binary_->section_from_virtual_address(dt_reloc_addr->value());
-
-  if (isRela) {
-    dt_reloc_size->value(dynamic_relocations.size() * sizeof(Elf_Rela));
-  } else {
-    dt_reloc_size->value(dynamic_relocations.size() * sizeof(Elf_Rel));
   }
 
   vector_iostream content(this->should_swap());
@@ -1720,7 +1772,7 @@ void Builder::build_dynamic_relocations(void) {
     }
 
 
-    if (isRela) {
+    if (is_rela) {
       Elf_Rela relahdr;
       relahdr.r_offset = static_cast<Elf_Addr>(relocation.address());
       relahdr.r_info   = static_cast<Elf_Xword>(r_info);
@@ -1737,8 +1789,84 @@ void Builder::build_dynamic_relocations(void) {
 
   }
 
+  dynamic_entries_t::iterator it_dyn_relocation;
+  dynamic_entries_t::iterator it_dyn_relocation_size;
+
+  if (is_rela) {
+    it_dyn_relocation = std::find_if(
+      std::begin(this->binary_->dynamic_entries_),
+      std::end(this->binary_->dynamic_entries_),
+      [](const DynamicEntry * entry)
+      {
+        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELA;
+      });
+
+    it_dyn_relocation_size = std::find_if(
+      std::begin(this->binary_->dynamic_entries_),
+      std::end(this->binary_->dynamic_entries_),
+      [](const DynamicEntry * entry)
+      {
+        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELASZ;
+      });
+  }
+  else {
+    it_dyn_relocation = std::find_if(
+      std::begin(this->binary_->dynamic_entries_),
+      std::end(this->binary_->dynamic_entries_),
+      [](const DynamicEntry * entry)
+      {
+        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_REL;
+      });
+
+    it_dyn_relocation_size = std::find_if(
+      std::begin(this->binary_->dynamic_entries_),
+      std::end(this->binary_->dynamic_entries_),
+      [](const DynamicEntry * entry)
+      {
+        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_RELSZ;
+      });
+  }
+
+  if (it_dyn_relocation      == std::end(this->binary_->dynamic_entries_) and
+      it_dyn_relocation_size == std::end(this->binary_->dynamic_entries_)) {
+    VLOG(VDEBUG) << "Both DT_REL{A} and DT_REL{A}SZ are missing, create a section .rela.dyn";
+
+    this->binary_->add({ DYNAMIC_TAGS::DT_RELA, 0x0 });
+    this->binary_->add({ DYNAMIC_TAGS::DT_RELASZ, content.size() });
+    this->binary_->add({ DYNAMIC_TAGS::DT_RELAENT, sizeof(Elf_Rela) });
+    this->binary_->add({ DYNAMIC_TAGS::DT_RELACOUNT, this->binary_->dynamic_relocations().size() });
+
+    Section rela_dyn{ ".rela.dyn", ELF_SECTION_TYPES::SHT_RELA };
+    rela_dyn.flags(static_cast<uint64_t>(ELF_SECTION_FLAGS::SHF_ALLOC));
+    rela_dyn.entry_size(sizeof(Elf_Rela));
+    rela_dyn.alignment(8);
+    rela_dyn.content(content.raw());
+    this->binary_->add_section<true>(rela_dyn);
+    return;
+  }
+
+  if (it_dyn_relocation == std::end(this->binary_->dynamic_entries_)) {
+    throw LIEF::not_found("Unable to find the DT_REL{A} entry");
+  }
+
+  if (it_dyn_relocation_size == std::end(this->binary_->dynamic_entries_)) {
+    throw LIEF::not_found("Unable to find the DT_REL{A}SZ entry");
+  }
+
+  DynamicEntry* dt_reloc_addr = *it_dyn_relocation;
+  DynamicEntry* dt_reloc_size = *it_dyn_relocation_size;
+
+  if (is_rela) {
+    dt_reloc_size->value(dynamic_relocations.size() * sizeof(Elf_Rela));
+  }
+  else {
+    dt_reloc_size->value(dynamic_relocations.size() * sizeof(Elf_Rel));
+  }
+
+  Section& relocation_section = this->binary_->section_from_virtual_address(dt_reloc_addr->value());
+
   VLOG(VDEBUG) << "Section associated with dynamic relocations: " << relocation_section.name();
-  VLOG(VDEBUG) << "Is Rela: " << std::boolalpha << isRela;
+  VLOG(VDEBUG) << "Is Rela: " << std::boolalpha << is_rela;
   // Relocation the '.dyn.rel' section
   if (content.size() > relocation_section.original_size() and relocation_section.original_size() > 0) {
     LOG(INFO) << "Need to relocated dynamic relocation section (" << content.size() << " vs " << relocation_section.original_size() << ")" << std::endl;
@@ -1779,51 +1907,18 @@ void Builder::build_pltgot_relocations(void) {
 
   it_pltgot_relocations pltgot_relocations = this->binary_->pltgot_relocations();
 
-  bool isRela = pltgot_relocations[0].is_rela();
+  bool is_rela = pltgot_relocations[0].is_rela();
 
   if (not std::all_of(
         std::begin(pltgot_relocations),
         std::end(pltgot_relocations),
-        [isRela] (const Relocation& relocation) {
-          return relocation.is_rela() == isRela;
+        [is_rela] (const Relocation& relocation) {
+          return relocation.is_rela() == is_rela;
         })) {
       throw LIEF::type_error("Relocation are not of the same type");
   }
 
-  //TODO: check DT_PLTREL
-  auto&& it_pltgot_relocation = std::find_if(
-      std::begin(this->binary_->dynamic_entries_),
-      std::end(this->binary_->dynamic_entries_),
-      [] (const DynamicEntry* entry)
-      {
-        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_JMPREL;
-      });
 
-  auto&& it_pltgot_relocation_size = std::find_if(
-      std::begin(this->binary_->dynamic_entries_),
-      std::end(this->binary_->dynamic_entries_),
-      [] (const DynamicEntry* entry)
-      {
-        return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_PLTRELSZ;
-      });
-
-  if (it_pltgot_relocation == std::end(this->binary_->dynamic_entries_)) {
-    throw LIEF::not_found("Unable to find the DT_JMPREL entry");
-  }
-
-  if (it_pltgot_relocation_size == std::end(this->binary_->dynamic_entries_)) {
-    throw LIEF::not_found("Unable to find the DT_PLTRELSZ entry");
-  }
-
-  DynamicEntry* dt_reloc_addr = *it_pltgot_relocation;
-  DynamicEntry* dt_reloc_size = *it_pltgot_relocation_size;
-
-  Section& relocation_section = this->binary_->section_from_virtual_address((*it_pltgot_relocation)->value());
-  if (isRela) {
-    dt_reloc_size->value(pltgot_relocations.size() * sizeof(Elf_Rela));
-  } else {
-    dt_reloc_size->value(pltgot_relocations.size() * sizeof(Elf_Rel));
-  }
 
   vector_iostream content(this->should_swap()); // Section's content
   for (const Relocation& relocation : this->binary_->pltgot_relocations()) {
@@ -1855,7 +1950,7 @@ void Builder::build_pltgot_relocations(void) {
       info = (static_cast<Elf_Xword>(idx) << 32) | (relocation.type() & 0xffffffffL);
     }
 
-    if (isRela) {
+    if (is_rela) {
       Elf_Rela relahdr;
       relahdr.r_offset = static_cast<Elf_Addr>(relocation.address());
       relahdr.r_info   = static_cast<Elf_Xword>(info);
@@ -1871,6 +1966,58 @@ void Builder::build_pltgot_relocations(void) {
     }
   }
 
+  //TODO: check DT_PLTREL
+  auto&& it_pltgot_relocation = std::find_if(
+    std::begin(this->binary_->dynamic_entries_),
+    std::end(this->binary_->dynamic_entries_),
+    [](const DynamicEntry * entry)
+    {
+      return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_JMPREL;
+    });
+
+  auto&& it_pltgot_relocation_size = std::find_if(
+    std::begin(this->binary_->dynamic_entries_),
+    std::end(this->binary_->dynamic_entries_),
+    [](const DynamicEntry * entry)
+    {
+      return entry != nullptr and entry->tag() == DYNAMIC_TAGS::DT_PLTRELSZ;
+    });
+
+  if (it_pltgot_relocation      == std::end(this->binary_->dynamic_entries_) and
+      it_pltgot_relocation_size == std::end(this->binary_->dynamic_entries_)) {
+    VLOG(VDEBUG) << "Both DT_JMPREL and DT_PLTRELSZ are missing, create a section .rela.plt";
+
+    this->binary_->add({ DYNAMIC_TAGS::DT_JMPREL, 0x0 });
+    this->binary_->add({ DYNAMIC_TAGS::DT_PLTRELSZ, content.size() });
+    this->binary_->add({ DYNAMIC_TAGS::DT_PLTREL, static_cast<uint32_t>(DYNAMIC_TAGS::DT_RELA) });
+
+    Section rela_plt{ ".rela.plt", ELF_SECTION_TYPES::SHT_RELA };
+    rela_plt.flags(static_cast<uint64_t>(ELF_SECTION_FLAGS::SHF_ALLOC));
+    rela_plt.entry_size(sizeof(Elf_Rela));
+    rela_plt.alignment(8);
+    rela_plt.content(content.raw());
+    this->binary_->add_section<true>(rela_plt);
+    return;
+  }
+
+  if (it_pltgot_relocation == std::end(this->binary_->dynamic_entries_)) {
+    throw LIEF::not_found("Unable to find the DT_JMPREL entry");
+  }
+
+  if (it_pltgot_relocation_size == std::end(this->binary_->dynamic_entries_)) {
+    throw LIEF::not_found("Unable to find the DT_PLTRELSZ entry");
+  }
+
+  DynamicEntry* dt_reloc_addr = *it_pltgot_relocation;
+  DynamicEntry* dt_reloc_size = *it_pltgot_relocation_size;
+
+  Section& relocation_section = this->binary_->section_from_virtual_address((*it_pltgot_relocation)->value());
+  if (is_rela) {
+    dt_reloc_size->value(pltgot_relocations.size() * sizeof(Elf_Rela));
+  }
+  else {
+    dt_reloc_size->value(pltgot_relocations.size() * sizeof(Elf_Rel));
+  }
 
   if (content.size() > relocation_section.original_size() and relocation_section.original_size() > 0) {
     // Need relocation of the reloc section

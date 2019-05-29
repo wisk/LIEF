@@ -39,6 +39,8 @@ Section operator"" _section(const char* name) {
   return Section{name};
 }
 
+const Section Section::null{};
+
 Section::~Section(void) = default;
 
 
@@ -89,21 +91,17 @@ Section::Section(void) :
   file_fixed_{false},
   memory_fixed_{false},
   name_idx_{0},
-  type_{ELF_SECTION_TYPES::SHT_PROGBITS},
+  type_{ELF_SECTION_TYPES::SHT_NULL},
   flags_{0},
   original_size_{0},
   link_{0},
   info_{0},
-  address_align_{0x1000},
+  address_align_{0x0},
   entry_size_{0},
   segments_{},
   datahandler_{nullptr},
   content_c_{}
-{
-  this->virtual_address_ = 0;
-  this->offset_          = 0;
-  this->size_            = 0;
-}
+{}
 
 
 Section::Section(const std::string& name, ELF_SECTION_TYPES type) :

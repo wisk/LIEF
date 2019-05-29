@@ -117,6 +117,19 @@ namespace LIEF {
       new_binary->header_.identity_version(VERSION::EV_CURRENT);
       new_binary->header_.identity_os_abi(OS_ABI::ELFOSABI_SYSTEMV);
 
+      switch (clazz) {
+        case ELF_CLASS::ELFCLASS32:
+          {
+            new_binary->content_offset(sizeof(ELF32::Elf_Ehdr));
+            break;
+          }
+        case ELF_CLASS::ELFCLASS64:
+          {
+            new_binary->content_offset(sizeof(ELF64::Elf_Ehdr));
+            break;
+          }
+      }
+
       new_binary->datahandler_ = new DataHandler::Handler{ std::vector<uint8_t>{} };
       return new_binary;
     }

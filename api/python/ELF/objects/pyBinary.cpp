@@ -388,6 +388,16 @@ void create<Binary>(py::module& m) {
         "output"_a,
         py::return_value_policy::reference_internal)
 
+    .def_property("content_offset",
+      static_cast<getter_t<uint64_t>>(&Binary::content_offset),
+      static_cast<setter_t<uint64_t>>(&Binary::content_offset),
+      "Return the file offset where content is located")
+
+    .def_property("image_base",
+      static_cast<getter_t<uint64_t>>(&Binary::image_base),
+      static_cast<setter_t<uint64_t>>(&Binary::image_base),
+      "Return the preferred image base")
+
     .def_property_readonly("last_offset_section",
         &Binary::last_offset_section,
         "Return the last offset used in binary according to **section headers**")

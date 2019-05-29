@@ -49,6 +49,8 @@ class LIEF_API Section : public LIEF::Section {
   friend class Builder;
 
  public:
+    const static Section null;
+
     Section(uint8_t *data, ELF_CLASS type);
     Section(const Elf64_Shdr* header);
     Section(const Elf32_Shdr* header);

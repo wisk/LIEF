@@ -470,25 +470,27 @@ Symbol& Binary::export_symbol(const Symbol& symbol) {
     return this->export_symbol(new_sym);
   }
 
-  auto&& it_text = std::find_if(
+  Symbol& s = **it_symbol;
+
+  if (s.shndx() == 0) {
+    auto&& it_text = std::find_if(
       std::begin(this->sections_),
       std::end(this->sections_),
-      [] (const Section* s) {
+      [](const Section* s) {
         return s->name() == ".text";
       });
-  size_t text_idx = std::distance(std::begin(this->sections_), it_text);
+    if (it_text != std::end(this->sections_)) {
+      size_t text_idx = std::distance(std::begin(this->sections_), it_text);
+      s.shndx(text_idx);
+    }
+  }
 
-  Symbol& s = **it_symbol;
   if (s.binding() != SYMBOL_BINDINGS::STB_WEAK or s.binding() != SYMBOL_BINDINGS::STB_GLOBAL) {
     s.binding(SYMBOL_BINDINGS::STB_GLOBAL);
   }
 
   if (s.type() == ELF_SYMBOL_TYPES::STT_NOTYPE) {
     s.type(ELF_SYMBOL_TYPES::STT_COMMON);
-  }
-
-  if (s.shndx() == 0) {
-    s.shndx(text_idx);
   }
 
   s.visibility(ELF_SYMBOL_VISIBILITY::STV_DEFAULT);
@@ -558,7 +560,7 @@ Symbol& Binary::add_exported_function(uint64_t address, const std::string& name)
   funcsym.binding(SYMBOL_BINDINGS::STB_GLOBAL);
   funcsym.visibility(ELF_SYMBOL_VISIBILITY::STV_DEFAULT);
   funcsym.value(address);
-
+  funcsym.size(0x0);
   return this->export_symbol(funcsym);
 
 }
@@ -1594,12 +1596,22 @@ void Binary::strip(void) {
 
 
 Symbol& Binary::add_static_symbol(const Symbol& symbol) {
+  // The first symbol must be null
+  if (this->static_symbols_.empty() and symbol != Symbol::null) {
+    this->add_static_symbol(Symbol::null);
+  }
+
   this->static_symbols_.push_back(new Symbol{symbol});
   return *(this->static_symbols_.back());
 }
 
 
 Symbol& Binary::add_dynamic_symbol(const Symbol& symbol, const SymbolVersion& version) {
+  // The first symbol must be null
+  if (this->dynamic_symbols_.empty() and symbol != Symbol::null) {
+    this->add_dynamic_symbol(Symbol::null, SymbolVersion{});
+  }
+
   Symbol* sym = new Symbol{symbol};
   SymbolVersion* symver = new SymbolVersion{version};
   sym->symbol_version_ = symver;

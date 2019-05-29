@@ -616,13 +616,12 @@ namespace LIEF {
     Section& Binary::add_section<false>(const Section& section) {
 
       // TODO: Code dup
-      if (this->sections_.size() == 0 and section.type() != ELF_SECTION_TYPES::SHT_NULL) {
-        Section* null_section = new Section{ "", ELF_SECTION_TYPES::SHT_NULL };
-        null_section->alignment(0);
+      if (this->sections_.empty() and section != Section::null) {
+        Section* null_section = new Section{ Section::null };
         null_section->file_fixed(true);
         null_section->memory_fixed(true);
         this->sections_.push_back(null_section);
-        this->header().numberof_sections(this->header().numberof_sections() + 1);
+        this->header().numberof_sections(1);
       }
 
       Section* new_section = new Section{ section };
@@ -660,13 +659,12 @@ namespace LIEF {
       VLOG(VDEBUG) << "Adding section '" << section << "' in the binary (LOADED)";
 
       // Usually, null section must not be loadable
-      if (this->sections_.size() == 0 and section.type() != ELF_SECTION_TYPES::SHT_NULL) {
-        Section* null_section = new Section{ "", ELF_SECTION_TYPES::SHT_NULL };
-        null_section->alignment(0);
+      if (this->sections_.empty() and section != Section::null) {
+        Section* null_section = new Section{ Section::null };
         null_section->file_fixed(true);
         null_section->memory_fixed(true);
         this->sections_.push_back(null_section);
-        this->header().numberof_sections(this->header().numberof_sections() + 1);
+        this->header().numberof_sections(1);
       }
 
       // Determine the segment type from the section type
