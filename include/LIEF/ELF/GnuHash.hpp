@@ -37,6 +37,7 @@ class LIEF_API GnuHash : public Object {
 
   public:
   GnuHash(void);
+  GnuHash(uint32_t nbucket, uint32_t symndx, uint32_t bloom_size, uint32_t bloom_shift);
   GnuHash(uint32_t symbol_idx,
       uint32_t shift2,
       const std::vector<uint64_t>& bloom_filters,

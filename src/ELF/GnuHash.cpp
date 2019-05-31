@@ -37,6 +37,15 @@ GnuHash::GnuHash(void) :
   c_{0}
 {}
 
+GnuHash::GnuHash(uint32_t nbucket, uint32_t symndx, uint32_t bloom_size, uint32_t bloom_shift) :
+  symbol_index_{symndx},
+  shift2_{bloom_shift},
+  bloom_filters_(bloom_size),
+  buckets_{},
+  hash_values_{}
+{
+}
+
 
 GnuHash::GnuHash(uint32_t symbol_idx,
       uint32_t shift2,

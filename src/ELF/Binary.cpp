@@ -1956,6 +1956,7 @@ void Binary::accept(LIEF::Visitor& visitor) const {
 
 bool Binary::use_gnu_hash(void) const {
 
+  // TODO: It would be probably better to rely on the section instead of dynamic entry
   auto&& it_gnu_hash = std::find_if(
       std::begin(this->dynamic_entries_),
       std::end(this->dynamic_entries_),
@@ -1975,8 +1976,29 @@ const GnuHash& Binary::gnu_hash(void) const {
   }
 }
 
+void Binary::gnu_hash(const GnuHash& gnu_hash)
+{
+  this->gnu_hash_ = gnu_hash;
+  if (not this->use_gnu_hash()) {
+    Section gnu_hash_section{ ".gnu.hash", ELF_SECTION_TYPES::SHT_GNU_HASH };
+    gnu_hash_section.flags(static_cast<uint64_t>(ELF_SECTION_FLAGS::SHF_ALLOC));
+    gnu_hash_section.alignment(this->header().identity_class() == ELF_CLASS::ELFCLASS64 ? 8 : 4);
+    std::vector<uint8_t> content(4 * sizeof(uint32_t));
+    uint32_t* gnu_hash_content = reinterpret_cast<uint32_t*>(content.data());
+    gnu_hash_content[0] = gnu_hash.nb_buckets();
+    gnu_hash_content[1] = gnu_hash.symbol_index();
+    gnu_hash_content[2] = gnu_hash.maskwords();
+    gnu_hash_content[3] = gnu_hash.shift2();
+    gnu_hash_section.content(content);
+    this->add_section<true>(gnu_hash_section);
+    this->add({ DYNAMIC_TAGS::DT_GNU_HASH, 0x0 });
+  }
+}
+
 
 bool Binary::use_sysv_hash(void) const {
+
+  // TODO: It would be probably better to rely on the section instead of dynamic entry
   auto&& it_sysv_hash = std::find_if(
       std::begin(this->dynamic_entries_),
       std::end(this->dynamic_entries_),
@@ -1995,6 +2017,23 @@ const SysvHash& Binary::sysv_hash(void) const {
   }
 }
 
+void Binary::sysv_hash(const SysvHash& sysv_hash)
+{
+  this->sysv_hash_ = sysv_hash;
+
+  if (not this->use_sysv_hash()) {
+    Section hash_section{ ".hash", ELF_SECTION_TYPES::SHT_HASH };
+    hash_section.flags(static_cast<uint64_t>(ELF_SECTION_FLAGS::SHF_ALLOC));
+    hash_section.alignment(4);
+    std::vector<uint8_t> content(2 * sizeof(uint32_t), 0);
+    uint32_t* sysv_content = reinterpret_cast<uint32_t*>(content.data());
+    sysv_content[0] = sysv_hash.nbucket();
+    sysv_content[1] = sysv_hash.nchain();
+    hash_section.content(content);
+    this->add_section<true>(hash_section);
+    this->add({ DYNAMIC_TAGS::DT_HASH, 0x0 });
+  }
+}
 
 void Binary::shift_sections(uint64_t from, uint64_t shift) {
   VLOG(VDEBUG) << "Shift Sections";

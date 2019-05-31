@@ -352,6 +352,27 @@ void Builder::build_sections(void) {
           break;
         }
 
+      case ELF_SECTION_TYPES::SHT_HASH:
+        {
+          DynamicEntry& de_hash = this->binary_->get(DYNAMIC_TAGS::DT_HASH);
+          de_hash.value(section.virtual_address());
+          if (not update_dynamic_entry(de_hash)) {
+            throw not_found("Unable to update DT_HASH");
+          }
+          break;
+        }
+
+      case ELF_SECTION_TYPES::SHT_GNU_HASH:
+        {
+          DynamicEntry& de_gnu_hash = this->binary_->get(DYNAMIC_TAGS::DT_GNU_HASH);
+          de_gnu_hash.value(section.virtual_address());
+          if (not update_dynamic_entry(de_gnu_hash)) {
+            throw not_found("Unable to update DT_GNU_HASH");
+          }
+          break;
+        }
+
+
       default:
         {
           break;
@@ -1307,12 +1328,14 @@ void Builder::build_symbol_hash(void) {
     return;
   }
 
-  std::vector<uint8_t> content = (*it_hash_section)->content();
-  VectorStream hashtable_stream{content};
-  hashtable_stream.set_endian_swap(this->should_swap());
-  hashtable_stream.setpos(0);
-  uint32_t nbucket = hashtable_stream.read_conv<uint32_t>();
-  uint32_t nchain  = hashtable_stream.read_conv<uint32_t>();
+  //std::vector<uint8_t> content = (*it_hash_section)->content();
+  //VectorStream hashtable_stream{content};
+  //hashtable_stream.set_endian_swap(this->should_swap());
+  //hashtable_stream.setpos(0);
+  //uint32_t nbucket = hashtable_stream.read_conv<uint32_t>();
+  //uint32_t nchain  = hashtable_stream.read_conv<uint32_t>();
+  uint32_t nbucket = this->binary_->sysv_hash().buckets().size();
+  uint32_t nchain = this->binary_->sysv_hash().chains().size();
 
 
   std::vector<uint8_t> new_hash_table((nbucket + nchain + 2) * sizeof(uint32_t), 0);
@@ -1357,7 +1380,13 @@ void Builder::build_symbol_hash(void) {
     }
   }
 
+  // The section is not yet allocated, we can use initialize its content directly
   Section& h_section = **it_hash_section;
+  if (not h_section.file_fixed() and not h_section.memory_fixed()) {
+    h_section.content(new_hash_table);
+    return;
+  }
+
   if (new_hash_table.size() > h_section.size()) {
     LOG(INFO) << "Need to relocate the '" << h_section.name() << "' section";
 
@@ -1523,7 +1552,18 @@ void Builder::build_symbol_gnuhash(void) {
       });
 
   if (it_gnuhash == std::end(this->binary_->sections_)) {
-    throw corrupted("Unable to find the .gnu.hash section");
+    Section gnu_hash_section{ ".gnu.hash", ELF_SECTION_TYPES::SHT_GNU_HASH };
+    gnu_hash_section.alignment(8);
+    // sh_link will be set during the .dynsym building
+    gnu_hash_section.content(raw_gnuhash.raw());
+    this->binary_->add_section<true>(gnu_hash_section);
+
+    // Create a placeholder dynamic entry for GNU_HASH is needed
+    if (!this->binary_->has(DYNAMIC_TAGS::DT_GNU_HASH)) {
+      this->binary_->add({ DYNAMIC_TAGS::DT_GNU_HASH, 0x0 });
+    }
+
+    return;
   }
 
   Section& h_section = **it_gnuhash;
@@ -1558,34 +1598,25 @@ void Builder::build_symbol_gnuhash(void) {
 template<typename ELF_T>
 void Builder::build_hash_table(void) {
   VLOG(VDEBUG) << "Build hash table";
+
   auto&& it_hash = std::find_if(
-      std::begin(this->binary_->sections_),
-      std::end(this->binary_->sections_),
-      [] (const Section* section)
-      {
-        return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_HASH;
-      });
-
-
-  auto&& it_gnuhash = std::find_if(
-      std::begin(this->binary_->sections_),
-      std::end(this->binary_->sections_),
-      [] (const Section* section)
-      {
-        return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_GNU_HASH;
-      });
+    std::begin(this->binary_->sections_),
+    std::end(this->binary_->sections_),
+    [](const Section* section)
+  {
+    return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_HASH;
+  });
 
   //TODO: To improve
   if (it_hash != std::end(this->binary_->sections_)) {
     this->build_symbol_hash<ELF_T>();
   }
 
-  if (it_gnuhash != std::end(this->binary_->sections_)) {
-    if (this->empties_gnuhash_) {
-      this->build_empty_symbol_gnuhash();
-    } else {
-      this->build_symbol_gnuhash<ELF_T>();
-    }
+  if (this->empties_gnuhash_) {
+    this->build_empty_symbol_gnuhash();
+  }
+  else {
+    this->build_symbol_gnuhash<ELF_T>();
   }
 }
 
@@ -2548,8 +2579,6 @@ void Builder::build_notes(void) {
     this->build(NOTE_TYPES::NT_GNU_BUILD_ID);
     this->build(NOTE_TYPES::NT_GNU_GOLD_VERSION);
   }
-
-
 }
 
 template<class ELF_T>
@@ -2614,9 +2643,6 @@ void Builder::build_overlay(void) {
     this->ios_.write(overlay);
   }
 }
-
-
-
 
 } // namespace ELF
 } // namespace LIEF

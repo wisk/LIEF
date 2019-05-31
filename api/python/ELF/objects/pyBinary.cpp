@@ -154,8 +154,9 @@ void create<Binary>(py::module& m) {
         &Binary::use_gnu_hash,
         "``True`` if GNU hash is used")
 
-    .def_property_readonly("gnu_hash",
-        &Binary::gnu_hash,
+    .def_property("gnu_hash",
+        static_cast<getter_t<const GnuHash&>>(&Binary::gnu_hash),
+        static_cast<setter_t<const GnuHash&>>(&Binary::gnu_hash),
         "Return the " RST_CLASS_REF(lief.ELF.GnuHash) " object\n\n"
         "Hash are used by the loader to speed up symbols resolving (GNU Version)",
         py::return_value_policy::reference_internal)
@@ -164,8 +165,9 @@ void create<Binary>(py::module& m) {
         &Binary::use_sysv_hash,
         "``True`` if SYSV hash is used")
 
-    .def_property_readonly("sysv_hash",
-        &Binary::sysv_hash,
+    .def_property("sysv_hash",
+        static_cast<getter_t<const SysvHash&>>(&Binary::sysv_hash),
+        static_cast<setter_t<const SysvHash&>>(&Binary::sysv_hash),
         "Return the " RST_CLASS_REF(lief.ELF.SysvHash) " object\n\n"
         "Hash are used by the loader to speed up symbols resolving (SYSV version)",
         py::return_value_policy::reference_internal)

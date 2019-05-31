@@ -37,6 +37,7 @@ class LIEF_API SysvHash : public Object {
 
   public:
   SysvHash(void);
+  SysvHash(uint32_t nbucket, uint32_t nchain);
   SysvHash& operator=(const SysvHash& copy);
   SysvHash(const SysvHash& copy);
   virtual ~SysvHash(void);

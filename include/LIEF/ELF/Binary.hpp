@@ -199,16 +199,22 @@ class LIEF_API Binary : public LIEF::Binary {
   //! @see gnu_hash and use_sysv_hash
   bool use_gnu_hash(void) const;
 
-  //! @brief Return the GnuHash object in **readonly**
+  //! @brief Return the GnuHash object
   const GnuHash& gnu_hash(void) const;
+
+  //! @brief Initialize the GnuHash object
+  void gnu_hash(const GnuHash& gnu_hash);
 
   //! @brief ``true`` if SYSV hash is used
   //!
   //! @see sysv_hash and use_gnu_hash
   bool use_sysv_hash(void) const;
 
-  //! @brief Return the SysvHash object in **readonly**
+  //! @brief Return the SysvHash object
   const SysvHash& sysv_hash(void) const;
+
+  //! @brief Initialize the SysvHash object
+  void sysv_hash(const SysvHash& sysv_hash);
 
   //! @brief Check if a section with the given name exists in the binary
   bool has_section(const std::string& name) const;

@@ -96,19 +96,8 @@ void Builder::write(const std::string& filename) const {
 
 void Builder::build_empty_symbol_gnuhash(void) {
   LOG(DEBUG) << "Build empty GNU Hash";
-  auto&& it_gnuhash = std::find_if(
-      std::begin(this->binary_->sections_),
-      std::end(this->binary_->sections_),
-      [] (const Section* section)
-      {
-        return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_GNU_HASH;
-      });
 
-  if (it_gnuhash == std::end(this->binary_->sections_)) {
-    throw corrupted("Unable to find the .gnu.hash section");
-  }
 
-  Section* gnu_hash_section = *it_gnuhash;
 
   vector_iostream content(this->should_swap());
   const uint32_t nb_buckets = 1;
@@ -128,10 +117,28 @@ void Builder::build_empty_symbol_gnuhash(void) {
   // shift2
   content.write_conv<uint32_t>(shift2);
 
+  auto&& it_gnuhash = std::find_if(
+    std::begin(this->binary_->sections_),
+    std::end(this->binary_->sections_),
+    [](const Section * section)
+    {
+      return section != nullptr and section->type() == ELF_SECTION_TYPES::SHT_GNU_HASH;
+    });
+
+  if (it_gnuhash == std::end(this->binary_->sections_)) {
+    Section gnu_hash_section{ ".gnu.hash", ELF_SECTION_TYPES::SHT_GNU_HASH };
+    gnu_hash_section.alignment(8);
+    // sh_link will be set during the .dynsym building
+    gnu_hash_section.content(content.raw());
+    this->binary_->add_section<true>(gnu_hash_section);
+    return;
+  }
+
+  Section* gnu_hash_section = *it_gnuhash;
+
   // fill with 0
   content.align(gnu_hash_section->size(), 0);
   gnu_hash_section->content(content.raw());
-
 }
 
 
