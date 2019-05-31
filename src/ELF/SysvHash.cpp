@@ -99,7 +99,7 @@ std::ostream& operator<<(std::ostream& os, const SysvHash& sysvhash) {
 
         return a.empty() ? "[" + dec_bucket.str() : a + ", " + dec_bucket.str();
       });
-  buckets_str += "]";
+  chains_str += "]";
 
 
 

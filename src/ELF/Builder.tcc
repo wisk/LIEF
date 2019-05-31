@@ -435,7 +435,7 @@ void Builder::build_sections(void) {
   if (it_symtab_section != std::end(this->binary_->sections_)) {
     Section& symbol_section = **it_symtab_section;
     Section* symbol_str_section = nullptr;
-    if (symbol_section.link() != 0 or
+    if (symbol_section.link() != 0 and
         symbol_section.link() < this->binary_->sections_.size()) {
       symbol_str_section = this->binary_->sections_[symbol_section.link()];
     }
@@ -629,34 +629,52 @@ void Builder::build_segments(void) {
     segment->physical_address(segment->virtual_address());
   }
 
+  auto&& it_phdr = std::find_if(
+    std::begin(this->binary_->segments_),
+    std::end(this->binary_->segments_),
+      [](const Segment* segment) {
+      return segment->type() == ELF::SEGMENT_TYPES::PT_PHDR;
+    });
+
   // We look for the best place for the PHDR
   uint64_t phdr_size = sizeof(Elf_Phdr) * (this->binary_->segments_.size() + 1);
   uint64_t phdr_offset = 0x0;
   uint64_t phdr_address = 0x0;
+  Segment* phdr_segment = it_phdr == std::end(this->binary_->segments_) ? nullptr : *it_phdr;
 
-  // Check if we have enough space before the content
-  if (sizeof(Elf_Ehdr) + phdr_size < this->binary_->content_offset_) {
-    phdr_offset = sizeof(Elf_Ehdr);
-    phdr_address = sizeof(Elf_Ehdr);
-
-    // If not, let's see if we can fill a gap
+  if (phdr_segment != nullptr) {
+    phdr_segment->virtual_size(phdr_size);
+    phdr_segment->physical_size(phdr_size);
   }
-  else {
-    for (gap gap : file_gaps) {
-      if (phdr_size <= gap.size) {
-        phdr_offset = gap.base;
-        gap.base += phdr_size;
-        gap.size -= phdr_size;
-        // TODO: remove gap entry if size == 0
-        break;
+
+  if (phdr_segment == nullptr or (phdr_segment != nullptr and not phdr_segment->file_fixed())) {
+
+    // Check if we have enough space before the content
+    if (sizeof(Elf_Ehdr) + phdr_size < this->binary_->content_offset_) {
+      phdr_offset = sizeof(Elf_Ehdr);
+      phdr_address = sizeof(Elf_Ehdr);
+
+    }
+    else {
+      // If not, let's see if we can fill a gap
+      for (gap gap : file_gaps) {
+        if (phdr_size <= gap.size) {
+          phdr_offset = gap.base;
+          gap.base += phdr_size;
+          gap.size -= phdr_size;
+          // TODO: remove gap entry if size == 0
+          break;
+        }
+      }
+      // We failed to find enough room in a gap, we have to put it at the end
+      if (phdr_offset == 0x0) {
+        phdr_offset = file_base;
+        file_base += phdr_size;
       }
     }
-    // We failed to find enough room in a gap, we have to put it at the end
-    if (phdr_offset == 0x0) {
-      phdr_offset = file_base;
-      file_base += phdr_size;
-    }
+  }
 
+  if (phdr_segment == nullptr or (phdr_segment != nullptr and not phdr_segment->memory_fixed())) {
     for (gap gap : memory_gaps) {
       if (phdr_size <= gap.size) {
         phdr_address = gap.base;
@@ -674,17 +692,19 @@ void Builder::build_segments(void) {
   }
 
   // Add the PT_PHDR at the first position
-  Segment* phdr_segment = new Segment;
-  phdr_segment->type(SEGMENT_TYPES::PT_PHDR);
-  phdr_segment->file_offset(phdr_offset);
-  phdr_segment->physical_size(phdr_size);
-  phdr_segment->virtual_address(phdr_address);
-  phdr_segment->physical_address(phdr_address);
-  phdr_segment->virtual_size(phdr_size);
-  phdr_segment->flags(ELF_SEGMENT_FLAGS::PF_R);
-  phdr_segment->alignment(8);
-  this->binary_->segments_.insert(std::begin(this->binary_->segments_), phdr_segment);
-  this->binary_->header().numberof_segments(this->binary_->segments_.size());
+  if (phdr_segment == nullptr) {
+    phdr_segment = new Segment;
+    phdr_segment->type(SEGMENT_TYPES::PT_PHDR);
+    phdr_segment->file_offset(phdr_offset);
+    phdr_segment->physical_size(phdr_size);
+    phdr_segment->virtual_address(phdr_address);
+    phdr_segment->physical_address(phdr_address);
+    phdr_segment->virtual_size(phdr_size);
+    phdr_segment->flags(ELF_SEGMENT_FLAGS::PF_R);
+    phdr_segment->alignment(8);
+    this->binary_->segments_.insert(std::begin(this->binary_->segments_), phdr_segment);
+    this->binary_->header().numberof_segments(this->binary_->segments_.size());
+  }
 
   VLOG(VDEBUG) << "[+] Build segments";
 
@@ -1337,6 +1357,13 @@ void Builder::build_symbol_hash(void) {
   uint32_t nbucket = this->binary_->sysv_hash().buckets().size();
   uint32_t nchain = this->binary_->sysv_hash().chains().size();
 
+  if (nchain != this->binary_->dynamic_symbols_.size()) {
+    VLOG(VDEBUG)
+      << "nchain must be the same size as the symbol table "
+      << nchain << " / " << this->binary_->dynamic_symbols_.size();
+    nchain = this->binary_->dynamic_symbols_.size();
+  }
+
 
   std::vector<uint8_t> new_hash_table((nbucket + nchain + 2) * sizeof(uint32_t), 0);
   uint32_t *new_hash_table_ptr = reinterpret_cast<uint32_t*>(new_hash_table.data());
@@ -1344,19 +1371,15 @@ void Builder::build_symbol_hash(void) {
   new_hash_table_ptr[0] = nbucket;
   new_hash_table_ptr[1] = nchain;
 
+  const auto&& hash_function = this->binary_->type_ == ELF_CLASS::ELFCLASS32 ? hash32 : hash64;
+
   uint32_t* bucket = &new_hash_table_ptr[2];
   uint32_t* chain  = &new_hash_table_ptr[2 + nbucket];
   uint32_t idx = 0;
   for (const Symbol* symbol : this->binary_->dynamic_symbols_) {
-    uint32_t hash = 0;
+    uint32_t hash = hash_function(symbol->name().c_str());
 
-    if (this->binary_->type_ == ELF_CLASS::ELFCLASS32) {
-      hash = hash32(symbol->name().c_str());
-    } else {
-      hash = hash64(symbol->name().c_str());
-    }
-
-    if(bucket[hash % nbucket] == 0) {
+    if (bucket[hash % nbucket] == 0) {
       bucket[hash % nbucket] = idx;
     } else {
       uint32_t value = bucket[hash % nbucket];
@@ -1379,6 +1402,11 @@ void Builder::build_symbol_hash(void) {
       Convert::swap_endian(&new_hash_table_ptr[i]);
     }
   }
+
+  SysvHash new_sysv_hash;
+  new_sysv_hash.buckets_ = std::move(std::vector<uint32_t>(bucket, bucket + nbucket));
+  new_sysv_hash.chains_ = std::move(std::vector<uint32_t>(chain, chain + nchain));
+  this->binary_->sysv_hash(new_sysv_hash);
 
   // The section is not yet allocated, we can use initialize its content directly
   Section& h_section = **it_hash_section;
@@ -1430,19 +1458,18 @@ void Builder::build_symbol_gnuhash(void) {
   const GnuHash& gnu_hash   = this->binary_->gnu_hash();
 
   const uint32_t nb_buckets = gnu_hash.nb_buckets();
-  const uint32_t symndx     = gnu_hash.symbol_index();
+        uint32_t symndx     = gnu_hash.symbol_index();
   const uint32_t maskwords  = gnu_hash.maskwords();
   const uint32_t shift2     = gnu_hash.shift2();
-
-  const std::vector<uint64_t>& filters = gnu_hash.bloom_filters();
-  if (filters.size() > 0 and filters[0] == 0) {
-    VLOG(VDEBUG) << "Bloom filter is null: nothing to do!";
-    return;
-  }
 
   if (shift2 == 0) {
     VLOG(VDEBUG) << "Shift2 is null: nothing to do!";
     return;
+  }
+
+  if (symndx >= this->binary_->dynamic_symbols_.size()) {
+    throw corrupted(std::string("Invalid symbol index for GNU hash:") +
+      std::to_string(symndx) + " / " + std::to_string(this->binary_->dynamic_symbols_.size()));
   }
 
   VLOG(VDEBUG) << "Number of buckets " << std::dec << nb_buckets;
@@ -1455,9 +1482,13 @@ void Builder::build_symbol_gnuhash(void) {
       std::begin(this->binary_->dynamic_symbols_) + symndx,
       std::end(this->binary_->dynamic_symbols_),
       [&nb_buckets] (const Symbol* lhs, const Symbol* rhs) {
+        if (lhs->shndx() == 0 and rhs->shndx() == 0 or
+            lhs->shndx() != 0 and rhs->shndx() != 0) {
         return
           (dl_new_hash(lhs->name().c_str()) % nb_buckets) <
           (dl_new_hash(rhs->name().c_str()) % nb_buckets);
+        }
+        return lhs->shndx() == 0 ? true : false;
     });
 
   it_symbols dynamic_symbols = this->binary_->dynamic_symbols();
@@ -1469,6 +1500,24 @@ void Builder::build_symbol_gnuhash(void) {
       nb_buckets * sizeof(uint32_t) + // buckets
       (dynamic_symbols.size() - symndx) * sizeof(uint32_t)); // hash values
 
+  auto&& it_defined_symbol = std::find_if(
+    std::begin(this->binary_->dynamic_symbols_),
+    std::end(this->binary_->dynamic_symbols_),
+    [](const Symbol* symbol) {
+      return (symbol->shndx() != 0) ? true : false;
+    });
+
+   uint32_t expected_symbol_index = std::distance(std::begin(this->binary_->dynamic_symbols_), it_defined_symbol);
+
+   // If all symbols are undef, the symbol index is 1
+   if (it_defined_symbol == std::end(this->binary_->dynamic_symbols_)) {
+     VLOG(VDEBUG) << "Invalid symbol index, fixing: " << expected_symbol_index << " / " << symndx;
+     symndx = 1;
+   // Otherwise, the index is the first defined symbol
+   } else if (expected_symbol_index != symndx) {
+     VLOG(VDEBUG) << "Invalid symbol index, fixing: " << expected_symbol_index << " / " << symndx;
+     symndx = expected_symbol_index;
+   }
 
   // Write "header"
   // ==============
@@ -1539,6 +1588,18 @@ void Builder::build_symbol_gnuhash(void) {
     hash_values[hash_value_idx - 1] |= 1;
   }
 
+  // It's safe to use std::move here since:
+  // - data are copied into the content buffer
+  // - these std::vector-s aren't used at this point
+  GnuHash new_gnu_hash;
+  new_gnu_hash.symbol_index_  = symndx;
+  new_gnu_hash.shift2_        = shift2;
+  new_gnu_hash.bloom_filters_ // The attribute bloom_filters_ is defined as uint64_t
+    = std::move(std::vector<uint64_t>(std::begin(bloom_filters), std::end(bloom_filters)));
+  new_gnu_hash.buckets_       = std::move(buckets);
+  new_gnu_hash.hash_values_   = std::move(hash_values);
+  this->binary_->gnu_hash(new_gnu_hash);
+
   raw_gnuhash.write_conv_array<uint32_t>(buckets);
 
   raw_gnuhash.write_conv_array<uint32_t>(hash_values);
@@ -1552,21 +1613,17 @@ void Builder::build_symbol_gnuhash(void) {
       });
 
   if (it_gnuhash == std::end(this->binary_->sections_)) {
-    Section gnu_hash_section{ ".gnu.hash", ELF_SECTION_TYPES::SHT_GNU_HASH };
-    gnu_hash_section.alignment(8);
-    // sh_link will be set during the .dynsym building
-    gnu_hash_section.content(raw_gnuhash.raw());
-    this->binary_->add_section<true>(gnu_hash_section);
-
-    // Create a placeholder dynamic entry for GNU_HASH is needed
-    if (!this->binary_->has(DYNAMIC_TAGS::DT_GNU_HASH)) {
-      this->binary_->add({ DYNAMIC_TAGS::DT_GNU_HASH, 0x0 });
-    }
-
-    return;
+    throw corrupted("Unable to find the .gnu.hash section");
   }
 
   Section& h_section = **it_gnuhash;
+
+  if (not h_section.file_fixed() and not h_section.memory_fixed()) {
+    // sh_link will be set during the .dynsym building
+    h_section.content(raw_gnuhash.raw());
+    return;
+  }
+
   if (raw_gnuhash.size() > h_section.size()) {
     LOG(INFO) << "Need to relocate the '" << h_section.name() << "' section";
 
@@ -1590,9 +1647,7 @@ void Builder::build_symbol_gnuhash(void) {
     return this->build<ELF_T>();
   }
 
-
   return h_section.content(std::move(raw_gnuhash.raw()));
-
 }
 
 template<typename ELF_T>
