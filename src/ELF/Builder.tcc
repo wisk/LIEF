@@ -418,6 +418,13 @@ void Builder::build_sections(void) {
     this->binary_->add_section<false>(shstrtab_section);
 
     this->binary_->header().section_name_table_idx(this->binary_->sections().size() - 1);
+  } else {
+    uint32_t shstrtab_index = std::distance(std::begin(this->binary_->sections_), it_shstrtab_section);
+    this->binary_->header_.section_name_table_idx(shstrtab_index);
+  }
+
+  if (this->binary_->sections_[header.section_name_table_idx()] == 0) {
+    throw corrupted("Invalid sections name index");
   }
 
   Section* string_names_section = this->binary_->sections_[header.section_name_table_idx()];
@@ -1356,6 +1363,10 @@ void Builder::build_symbol_hash(void) {
   //uint32_t nchain  = hashtable_stream.read_conv<uint32_t>();
   uint32_t nbucket = this->binary_->sysv_hash().buckets().size();
   uint32_t nchain = this->binary_->sysv_hash().chains().size();
+
+  if (nbucket == 0) {
+    throw corrupted("GNU Hash nbucket can't be 0");
+  }
 
   if (nchain != this->binary_->dynamic_symbols_.size()) {
     VLOG(VDEBUG)

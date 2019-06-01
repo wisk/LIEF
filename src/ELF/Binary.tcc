@@ -399,15 +399,17 @@ namespace LIEF {
 
       //new_segment->physical_address(new_segment->virtual_address());
 
-      uint64_t segmentsize = align(content.size(), psize);
+      if (new_segment->alignment() == 0) {
+        new_segment->alignment(psize);
+      }
+
+      uint64_t segmentsize = align(content.size(), new_segment->alignment());
       content.resize(segmentsize, 0);
 
       new_segment->physical_size(segmentsize);
       new_segment->virtual_size(segmentsize);
 
-      if (new_segment->alignment() == 0) {
-        new_segment->alignment(psize);
-      }
+
 
       //this->datahandler_->make_hole(last_offset_aligned, new_segment->physical_size());
       new_segment->content(content);
@@ -519,15 +521,17 @@ namespace LIEF {
       //new_segment->virtual_address(new_segment->file_offset() + base);
       //new_segment->physical_address(new_segment->virtual_address());
 
-      uint64_t segmentsize = align(content.size(), psize);
+      if (new_segment->alignment() == 0) {
+        new_segment->alignment(psize);
+      }
+
+      uint64_t segmentsize = align(content.size(), new_segment->alignment());
       content.resize(segmentsize);
 
       new_segment->physical_size(segmentsize);
       new_segment->virtual_size(segmentsize);
 
-      if (new_segment->alignment() == 0) {
-        new_segment->alignment(psize);
-      }
+
 
       // Patch SHDR
       Header& header = this->header();
@@ -914,15 +918,17 @@ namespace LIEF {
 
     //new_segment->physical_address(new_segment->virtual_address());
 
-    uint64_t segmentsize = align(content.size(), psize);
+    if (new_segment->alignment() == 0) {
+      new_segment->alignment(psize);
+    }
+
+    uint64_t segmentsize = align(content.size(), new_segment->alignment());
     content.resize(segmentsize, 0);
 
     new_segment->physical_size(segmentsize);
     new_segment->virtual_size(segmentsize);
 
-    if (new_segment->alignment() == 0) {
-      new_segment->alignment(psize);
-    }
+
 
     //this->datahandler_->make_hole(last_offset_aligned, new_segment->physical_size());
     new_segment->content(content);

@@ -1325,15 +1325,17 @@ Segment& Binary::replace(const Segment& new_segment, const Segment& original_seg
 
   new_segment_ptr->physical_address(new_segment_ptr->virtual_address());
 
-  uint64_t segmentsize = align(content.size(), psize);
+  if (new_segment_ptr->alignment() == 0) {
+    new_segment_ptr->alignment(psize);
+  }
+
+  uint64_t segmentsize = align(content.size(), new_segment_ptr->alignment());
   content.resize(segmentsize);
 
   new_segment_ptr->physical_size(segmentsize);
   new_segment_ptr->virtual_size(segmentsize);
 
-  if (new_segment_ptr->alignment() == 0) {
-    new_segment_ptr->alignment(psize);
-  }
+
 
   this->datahandler_->make_hole(last_offset_aligned, new_segment_ptr->physical_size());
   new_segment_ptr->content(content);
