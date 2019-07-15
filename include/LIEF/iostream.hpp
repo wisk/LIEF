@@ -35,7 +35,7 @@ class vector_iostream {
   vector_iostream(bool endian_swap=false);
   void reserve(size_t size);
 
-  // TODO: Implement other methods
+  vector_iostream& peek(uint8_t& c);
   vector_iostream& read(uint8_t* s, std::streamsize n);
 
   template<typename T>
@@ -116,8 +116,7 @@ class vector_iostream {
 
 
 template<typename T>
-inline vector_iostream& vector_iostream::read_conv(T& t)
-{
+inline vector_iostream& vector_iostream::read_conv(T& t) {
   this->read(reinterpret_cast<uint8_t*>(&t), sizeof(t));
   if (this->endian_swap_) {
     LIEF::Convert::swap_endian(&t);
