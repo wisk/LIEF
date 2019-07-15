@@ -273,9 +273,11 @@ class filter_iterator : public std::iterator<
   using pointer_t = typename filter_iterator::pointer;
   using filter_t  = std::function<bool (const typename DT::value_type&)>;
 
-  filter_iterator(T container, filter_t filter) :
+
+  filter_iterator(T&& container, filter_t filter) :
     size_c_{0},
-    container_{std::forward<T>(container)},
+    local_container_{std::move(container)},
+    container_{local_container_},
     filters_{},
     distance_{0}
   {
@@ -292,9 +294,10 @@ class filter_iterator : public std::iterator<
     }
   }
 
-  filter_iterator(T container, const std::vector<filter_t>& filters) :
+  filter_iterator(T&& container, const std::vector<filter_t>& filters) :
     size_c_{0},
-    container_{std::forward<T>(container)},
+    local_container_{std::move(container)},
+    container_{local_container_},
     filters_{filters},
     distance_{0}
   {
@@ -308,7 +311,53 @@ class filter_iterator : public std::iterator<
     }
   }
 
-  filter_iterator(T container) :
+  filter_iterator(T&& container) :
+    size_c_{0},
+    local_container_{std::move(container)},
+    container_{local_container_},
+    filters_{},
+    distance_{0}
+  {
+    this->it_ = std::begin(this->container_);
+  }
+
+
+  filter_iterator(T& container, filter_t filter) :
+    size_c_{0},
+    container_{container},
+    filters_{},
+    distance_{0}
+  {
+
+    this->it_ = std::begin(this->container_);
+
+    this->filters_.push_back(filter),
+    this->it_ = std::begin(this->container_);
+
+    if (this->it_ != std::end(this->container_)) {
+      if (not std::all_of(std::begin(this->filters_), std::end(this->filters_), [this] (const filter_t& f) {return f(*this->it_);})) {
+        this->next();
+      }
+    }
+  }
+
+  filter_iterator(T& container, const std::vector<filter_t>& filters) :
+    size_c_{0},
+    container_{container},
+    filters_{filters},
+    distance_{0}
+  {
+
+    this->it_ = std::begin(this->container_);
+
+    if (this->it_ != std::end(this->container_)) {
+      if (not std::all_of(std::begin(this->filters_), std::end(this->filters_), [this] (const filter_t& f) {return f(*this->it_);})) {
+        this->next();
+      }
+    }
+  }
+
+  filter_iterator(T& container) :
     size_c_{0},
     container_{std::forward<T>(container)},
     filters_{},
@@ -471,7 +520,8 @@ class filter_iterator : public std::iterator<
 
 
   mutable size_t size_c_;
-  T container_;
+  T& container_;
+  T local_container_;
   ITERATOR_T it_;
   std::vector<filter_t> filters_;
   typename filter_iterator::difference_type distance_;
