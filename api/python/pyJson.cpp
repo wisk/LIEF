@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 #include "LIEF/config.h"
+
+#ifdef LIEF_JSON_SUPPORT
+
 #include "LIEF/to_json.hpp"
 
 #include "pyLIEF.hpp"
@@ -22,3 +25,5 @@ void init_json_functions(py::module& m) {
   m.def("to_json", &LIEF::to_json_str);
   m.def("to_json_from_abstract", &LIEF::to_json_str_from_abstract);
 }
+
+#endif

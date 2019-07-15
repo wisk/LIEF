@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#ifdef ENABLE_JSON_SUPPORT
+
 #include "LIEF/PE/json.hpp"
 #include "LIEF/hash.hpp"
 #include "LIEF/PE.hpp"
@@ -820,3 +822,4 @@ void JsonVisitor::visit(const LIEF::Section& section) {
 } // namespace PE
 } // namespace LIEF
 
+#endif // ENABLE_JSON_SUPPORT

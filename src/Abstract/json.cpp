@@ -13,13 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include "LIEF/config.h"
+
+#ifdef LIEF_JSON_SUPPORT
+
 #include "LIEF/Abstract/json.hpp"
 #include "LIEF/Abstract.hpp"
 #include "LIEF/ELF.hpp"
 #include "LIEF/PE.hpp"
 #include "LIEF/MachO.hpp"
 #include "Object.tcc"
-#include "LIEF/config.h"
 
 namespace LIEF {
 
@@ -188,8 +192,6 @@ void AbstractJsonVisitor::visit(const Function& function) {
   this->node_["flags"]   = flags_str;
 
 }
-
-
-
-
 } // namespace LIEF
+
+#endif // LIEF_JSON_SUPPORT

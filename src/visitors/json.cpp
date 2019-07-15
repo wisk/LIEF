@@ -13,6 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include "LIEF/config.h"
+
+#ifdef LIEF_JSON_SUPPORT
+
 #include "LIEF/Abstract.hpp"
 #include "LIEF/visitors/json.hpp"
 #include "LIEF/Abstract/EnumToString.hpp"
@@ -142,3 +147,4 @@ const json& JsonVisitor::get(void) const {
 
 }
 
+#endif // LIEF_JSON_SUPPORT
